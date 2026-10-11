@@ -11,6 +11,8 @@ letting you emulate MIFARE Classic and NTAG tags with your own UID and memory.
 It also brings **NFC-V (ISO15693) reading and emulation** to the PN532, including
 ICODE SLIX and SLIX-L tags.
 
+*Reading an emulated MIFARE Classic tag with MIFARE Classic Tool on Android.*
+
 ## Features
 
 - **Emulate NFC-A:** Classic Mini/1K/2K/4K, NTAG213/215/216, Ultralight/EV1.
