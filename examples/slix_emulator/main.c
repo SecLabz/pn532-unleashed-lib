@@ -46,9 +46,9 @@ int main(void)
 {
     set_sys_clock_khz(PNU_REQUIRED_SYS_CLOCK_HZ / 1000u, true);
     stdio_init_all();
-    puts("SLIX demo: UID E004010102030405, writable memory.");
+    puts("SLIX demo: UID E004011102030405, writable memory.");
     static const uint8_t uid[8] = {
-        0xe0, 0x04, 0x01, 0x01, 0x02, 0x03, 0x04, 0x05};
+        0xe0, 0x04, 0x01, 0x11, 0x02, 0x03, 0x04, 0x05};
     static const card_image_t image = {.model = CARD_SLIX,
                                        .uid = uid,
                                        .uid_size_bytes = sizeof(uid),

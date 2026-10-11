@@ -5,16 +5,17 @@ Start a synthetic ICODE SLIX tag using the library's built-in NFC-V behavior.
 
 | Demo field | Value |
 | --- | --- |
-| UID (display order) | `E004010102030405` |
+| UID (display order) | `E004011102030405` |
 | Memory | 28 four-byte blocks containing consecutive bytes `00..6F` |
 | Block locks | All clear |
 | DSFID / AFI / IC reference | `12` / `34` / `01` |
 | EAS / EAS and AFI password protection | Inactive / disabled |
 | EAS/AFI password | `00000000` |
 
-Edit `memory[28][4]`, `locks[28]` and `source`. Keep the SLIX UID prefix
-`E00401` and the 28-block geometry. Start validates/copies the complete image;
-reader writes change backend RAM. Reset reloads the original demo.
+Edit `memory[28][4]`, `locks[28]` and `image`. Keep the 28-block geometry,
+the UID prefix `E00401` and `(uid[3] & 0x18) == 0x10` for SLIX identification.
+Start validates/copies the complete image; reader writes change backend RAM.
+Reset reloads the original demo.
 
 Responses run in the RX interrupt. Call `nfc_poll()` for activity LED updates
 when enabled.
@@ -27,7 +28,7 @@ With one Proxmark3 client:
 
 ```text
 hf 15 info
-hf 15 raw -ac -d 622305040302010104E0001B
+hf 15 raw -ac -d 622305040302110104E0001B
 ```
 
 The second command reads all 28 blocks with security bytes. Expect response

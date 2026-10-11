@@ -7,7 +7,7 @@ Build target `slix_reader` with the [shared instructions](../README.md).
 Open USB stdio with DTR. Example output for the synthetic SLIX tag:
 
 ```text
-SLIX tag UID: E004010102030405
+SLIX tag UID: E004011102030405
 DSFID: 12  AFI: 34  IC reference: 56
 Memory: 28 blocks x 4 bytes
 Block 00 [open]: 00 01 02 03

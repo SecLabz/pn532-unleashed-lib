@@ -170,7 +170,7 @@ static const uint8_t locks[28] = {0};
 
 nfc_status_t emulate_slix(void)
 {
-    static const uint8_t uid[8] = {0xe0, 0x04, 0x01, 0x01, 0x02, 0x03, 0x04, 0x05};
+    static const uint8_t uid[8] = {0xe0, 0x04, 0x01, 0x11, 0x02, 0x03, 0x04, 0x05};
     static const card_image_t image = {
         .model = CARD_SLIX,
         .uid = uid,
