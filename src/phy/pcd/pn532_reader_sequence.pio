@@ -1,0 +1,4 @@
+.program pn532_reader_sequence
+.wrap_target
+    out pins, 1
+.wrap

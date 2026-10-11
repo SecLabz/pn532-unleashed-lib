@@ -1,0 +1,55 @@
+name: Library checks
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  host:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: ./tests/run_host.sh
+
+  style:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 -m pip install black==24.8.0 clang-format==17.0.6
+      - run: CLANG_FORMAT=clang-format ./tests/check_style.sh
+
+  build:
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        transport: [SPI, HSU]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install the ARM toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-arm-none-eabi libnewlib-arm-none-eabi libstdc++-arm-none-eabi-newlib ninja-build
+      - name: Prepare the pinned Pico SDK
+        run: |
+          git clone https://github.com/raspberrypi/pico-sdk.git "$RUNNER_TEMP/pico-sdk"
+          git -C "$RUNNER_TEMP/pico-sdk" checkout 95ea6acad131124694cda1c162c52cd30e0aece0
+          git -C "$RUNNER_TEMP/pico-sdk" submodule update --init lib/tinyusb
+      - name: Build examples and C++ consumers
+        env:
+          PICO_SDK_PATH: ${{ runner.temp }}/pico-sdk
+          PNU_TRANSPORT: ${{ matrix.transport }}
+        run: |
+          ./examples/build.sh all "$PNU_TRANSPORT"
+          for trace in normal rf hsu; do
+            rf=OFF
+            hsu=OFF
+            if [ "$trace" = rf ]; then rf=ON; fi
+            if [ "$trace" = hsu ]; then hsu=ON; fi
+            cmake -S tests/integration -B ".cache/consumer-$trace" -G Ninja \
+              -DPICO_SDK_PATH="$PICO_SDK_PATH" -DPICO_NO_PICOTOOL=1 \
+              -DPNU_TRANSPORT="$PNU_TRANSPORT" -DPNU_RF_TRACE="$rf" -DPNU_HSU_TRACE="$hsu"
+            cmake --build ".cache/consumer-$trace"
+          done

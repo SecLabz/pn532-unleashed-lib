@@ -1,0 +1,12 @@
+.program nfcv_tx_stream
+
+; Continuous load-modulation bitmap streamer at an effective 2*fc clock.
+; One FIFO word describes 32 consecutive 8/fc ticks. The state-machine
+; divider keeps the 423.75 kHz subcarrier phase-stable at every supported
+; system clock.
+
+.wrap_target
+stream:
+    out pins, 1 [14]
+    jmp stream
+.wrap

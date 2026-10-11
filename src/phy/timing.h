@@ -1,0 +1,19 @@
+#pragma once
+
+#include "pn532_unleashed/config.h"
+
+#include <stdint.h>
+
+#define NFC_CARRIER_HZ 13560000u
+#define NFC_CARRIER_KHZ 13560u
+#define NFC_SYS_CLOCKS_PER_FC (PNU_REQUIRED_SYS_CLOCK_HZ / NFC_CARRIER_HZ)
+#define NFC_FC_TO_SYS_CYCLES(fc) ((uint32_t)(fc) * NFC_SYS_CLOCKS_PER_FC)
+#define NFC_8FC_SYS_CYCLES NFC_FC_TO_SYS_CYCLES(8u)
+#define NFC_128FC_SYS_CYCLES NFC_FC_TO_SYS_CYCLES(128u)
+#define NFCA_TAG_FDT_BASE_FC 996u
+#define NFCA_TAG_FDT_BASE_CYCLES NFC_FC_TO_SYS_CYCLES(NFCA_TAG_FDT_BASE_FC)
+#if NFC_SYS_CLOCKS_PER_FC == 4u
+#define NFCA_RX_PIO_CLKDIV 1.0f
+#else
+#define NFCA_RX_PIO_CLKDIV 2.0f
+#endif

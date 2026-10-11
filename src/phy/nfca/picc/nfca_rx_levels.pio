@@ -1,0 +1,50 @@
+.program nfca_rx_levels_5fc
+
+; ISO14443A PCD->PICC fixed 8/fc level capture at a 5*fc SM clock.
+; Preserve the validated 32-sample stable-high qualification. After the
+; leading edge is accepted, the first level is sampled at 20/fc and later
+; levels every 8/fc. Right-shift autopush exposes samples oldest-bit first.
+
+.wrap_target
+wait_low_initial_5fc:
+    jmp pin wait_low_initial_5fc
+wait_high_5fc:
+    jmp pin filter_high_5fc
+    jmp wait_high_5fc
+filter_high_5fc:
+    set y, 31
+filter_high_loop_5fc:
+    jmp pin continue_high_5fc
+    jmp wait_high_5fc
+continue_high_5fc:
+    jmp y-- filter_high_loop_5fc
+    nop [31]
+    nop [1]
+sample_5fc:
+    in pins, 1 [30]
+    nop [7]
+    jmp sample_5fc
+.wrap
+
+.program nfca_rx_levels_4fc
+
+; Same physical filter and 8/fc grid with an undivided 4*fc SM clock.
+
+.wrap_target
+wait_low_initial_4fc:
+    jmp pin wait_low_initial_4fc
+wait_high_4fc:
+    jmp pin filter_high_4fc
+    jmp wait_high_4fc
+filter_high_4fc:
+    set y, 31
+filter_high_loop_4fc:
+    jmp pin continue_high_4fc
+    jmp wait_high_4fc
+continue_high_4fc:
+    jmp y-- filter_high_loop_4fc
+    nop [13]
+sample_4fc:
+    in pins, 1 [30]
+    jmp sample_4fc
+.wrap

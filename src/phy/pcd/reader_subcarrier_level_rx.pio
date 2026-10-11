@@ -1,0 +1,25 @@
+.program reader_subcarrier_level_rx_1fc
+
+; Anchor the fixed 1/fc grid to the first physical subcarrier rise.
+wait 0 pin 0
+wait 1 pin 0
+.wrap_target
+    in pins, 1
+.wrap
+
+.program reader_subcarrier_level_rx_8fc
+
+; Wait for one physical subcarrier rise, then sample the recovered level on a
+; fixed 8/fc grid. The SM clock is 2/fc, giving the edge wait a 2/fc
+; resolution. One initial nop puts the first sample 4/fc after detection; three
+; nops then complete each 8/fc slot. Autopush emits one 32-sample word.
+
+wait 0 pin 0
+wait 1 pin 0
+nop
+.wrap_target
+    in pins, 1
+    nop
+    nop
+    nop
+.wrap

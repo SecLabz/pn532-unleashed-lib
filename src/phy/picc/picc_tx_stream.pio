@@ -1,0 +1,10 @@
+.program tag_tx_stream
+
+; Common tag load-modulation streamer. Each word contains sixteen 8/fc load
+; states, least-significant bit first.
+
+.wrap_target
+stream:
+    out pins, 1 [14]
+    jmp stream
+.wrap

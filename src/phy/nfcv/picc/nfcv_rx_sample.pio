@@ -1,0 +1,28 @@
+.program nfcv_rx_sample
+
+; ISO15693 1-of-4 sampler for clk_sys = 4*fc, 10*fc or 20*fc. The state
+; machine divider supplies an effective 2*fc clock at each system frequency.
+; The first sample is taken 96/fc after the first falling edge and each
+; subsequent sample is exactly 128/fc later. Eight samples are autopushed.
+; The 96/fc phase keeps every sample inside its 128/fc slot even when a
+; weak reader (phone) lets the envelope fall several microseconds late;
+; at 64/fc those pauses were observed one full slot late and every
+; 1-of-4 symbol decoded as garbage.
+
+.wrap_target
+    wait 1 pin 0
+    wait 0 pin 0
+    set x, 31
+first_delay:
+    jmp x-- first_delay [2]
+    nop [30]
+    nop [31]
+    nop [31]
+sample:
+    in pins, 1
+    set x, 31
+sample_delay:
+    jmp x-- sample_delay [6]
+    nop [28]
+    jmp sample
+.wrap

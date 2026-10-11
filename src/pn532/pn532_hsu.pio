@@ -1,0 +1,31 @@
+;
+; Copyright (c) 2020 Raspberry Pi (Trading) Ltd.
+;
+; SPDX-License-Identifier: BSD-3-Clause
+;
+; Adapted from pico-examples UART TX and framed UART RX programs.
+.pio_version 0
+
+.program pn532_hsu_tx
+.side_set 1 opt
+
+    pull side 1 [7]       ; Stop bit, or idle while waiting for data.
+    set x, 7 side 0 [7]   ; Eight-cycle start bit.
+bitloop:
+    out pins, 1
+    jmp x-- bitloop [6]   ; Eight cycles per data bit, LSB first.
+
+.program pn532_hsu_rx
+
+start:
+    wait 0 pin 0
+    set x, 7 [10]         ; First data sample at the bit center.
+bitloop:
+    in pins, 1
+    jmp x-- bitloop [6]
+    jmp pin good_stop
+    irq 4 rel             ; Sticky framing/break flag; no CPU interrupt.
+    wait 1 pin 0
+    jmp start             ; Reject the malformed byte.
+good_stop:
+    push
