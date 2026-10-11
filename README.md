@@ -13,6 +13,11 @@ ICODE SLIX and SLIX-L tags.
 
 *Reading an emulated MIFARE Classic tag with MIFARE Classic Tool on Android.*
 
+
+https://github.com/user-attachments/assets/bf9089b4-ad2d-4a9f-9ccc-5de9345d56bc
+
+
+
 ## Features
 
 - **Emulate NFC-A:** Classic Mini/1K/2K/4K, NTAG213/215/216, Ultralight/EV1.
