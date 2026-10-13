@@ -1,7 +1,8 @@
 # Classic API
 
 Initialize first, with idle RF. Stop acquired sessions on every exit and check
-cleanup. Complete magic/UID operations release their own RF operation.
+cleanup. Trailer management and complete magic/UID operations release their
+own RF operation.
 Supply known credentials explicitly.
 
 ## Blocks and sectors
@@ -65,31 +66,16 @@ Use output only on success; masked trailer secrets remain unknown.
 | `nfca_mifare_collect_static()` | One static-nonce observation, optionally advancing the known source |
 | `nfca_mifare_darkside_start()` / `_step()` | Explicit bounded steps and typed outcomes |
 
-Keep the selection for successive calls; stop on completion or error. Key
-checks use fresh authentication, reuse a verified plaintext selection, and
-address the known full UID when reselection is necessary. A successful check
-sends encrypted HALT before WUPA/SELECT; a failed candidate is also reselected
-before returning. Ordinary reads can safely follow either result. Classic
-AUTH waits at most 1 ms for SOF in each part
-([NXP MF1S50YYX/V1 table 21](https://cache.nxp.com/docs/en/data-sheet/MF1S50YYX_V1.pdf));
-capture still requires the same physical EOF. Ordinary AUTH and key-check
-reselection use a 66 us guard plus the unchanged 352/fc pre-SOF carrier; this exceeds 1172/fc without relying
-on CPU work or post-EOF capture. Scheduled acquisition and GDM authentication keep their
-existing deadlines.
-Collection uses
-`scheduled = true` for fixed-deadline Nested work, `false` for Hardnested.
-Unscheduled Hardnested uses the Classic 66 us guard during known-identity
-reselection and target authentication, with a 1 ms target SOF timeout. Scheduled
-Nested and Static Nested retain their existing cadence. The physical capture
-grid, response validation, cipher cleanup and challenge expiration are unchanged.
-The reference application records on-air qualification separately.
-`nfca_mifare_collect_static(source, target_block, target_key_b, advance_source,
-observation)` adds a bounded Static Nested acquisition path. It completes one
-known authentication, or two when `advance_source` is true, then captures and
-expires the unknown target challenge. The observation records the last known
-source nonce. Encrypted nonce parity and both known authentication responses
-are validated physically; outputs change only on success. No card memory is
-written. Existing collection signatures and behavior remain unchanged.
+Keep the selection for successive calls; stop on completion or error.
+Key checks leave it ready for another candidate or an ordinary read, including
+after `NFC_ACCESS_DENIED` (wrong key).
+
+For `nfca_mifare_collect()`, use `scheduled = true` for Nested and `false` for
+Hardnested. Static Nested uses `nfca_mifare_collect_static()`; set
+`advance_source = true` for the second observation with an additional known-key
+authentication. `source_nonce` is the last authenticated source nonce, and
+target parity is returned as observed on the wire. These calls write no memory
+and update their output only on success.
 Darkside `DARKSIDE_MORE` requests another step, not a recovered key.
 [Acquisition contracts →](../include/pn532_unleashed/nfca_mifare.h)
 
@@ -157,13 +143,13 @@ In an expected-identity `nfca_select()` session,
 `nfca_mifare_trailer_check(sector, key_b, key, before, after)` checks a proposed
 replacement without writing. `nfca_mifare_trailer_write()` performs the same
 fresh checks and sends WRITE once. Both functions release the owned selection.
-The borrowed 16-byte before array is the exact observable trailer; after
-contains both new keys, valid access bytes and GPB. Preserve metadata explicitly
-when only changing keys. Manufacturer/user blocks cannot be targeted here.
+The 16-byte `before` array is the exact observable trailer, including masked
+secrets; `after` contains both new keys, valid access bytes and GPB.
+Preserve metadata explicitly when only changing keys.
+Manufacturer/user blocks cannot be targeted here.
 
-Credentials, access permissions and compare-before are verified immediately
-before writing. A denied key field may only be preserved, proven by
-authentication or a readable-Key-B comparison. The reader then reauthenticates
-and compares again. New A, usable B or readable B, and metadata are verified
-afterward. Unknown write outcomes forbid automatic retry. Generic user-data
-writes continue to reject all trailers.
+The library checks credentials, permissions and current contents, then verifies
+the replacement keys and metadata. Fields that cannot be written must be
+preserved. `NFC_CONTENT_CHANGED` means no write was sent;
+`NFC_WRITE_OUTCOME_UNKNOWN` forbids automatic retry. Generic user-data writes
+continue to reject all trailers.

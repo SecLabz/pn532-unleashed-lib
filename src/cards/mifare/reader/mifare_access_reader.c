@@ -202,12 +202,7 @@ nfca_mifare_check_key(uint8_t block, bool key_b, const uint8_t key[6])
 
 static nfc_status_t verify_trailer(uint8_t block, const uint8_t after[16])
 {
-    nfc_status_t status = nfca_mifare_check_key(block, false, after);
-    if (status != NFC_OK)
-    {
-        return status;
-    }
-    status = authenticate(block, false, after);
+    nfc_status_t status = authenticate(block, false, after);
     if (status != NFC_OK || memcmp(&context.trailer[6], &after[6], 4u) != 0)
     {
         return status == NFC_OK ? NFC_INVALID_RESPONSE : status;
@@ -238,8 +233,12 @@ static nfc_status_t trailer_operation(uint8_t sector,
     const mifare_product_config_t *config =
         mifare_model_config(nfca_selected_model());
     nfc_status_t status = nfc_operation_require(NFC_STATE_READING_NFCA);
+    if (status == NFC_OK && config == NULL)
+    {
+        status = NFC_UNSUPPORTED;
+    }
     if (status == NFC_OK &&
-        (config == NULL || sector >= MIFARE_MAX_SECTORS ||
+        (sector >= MIFARE_MAX_SECTORS ||
          mifare_sector_trailer(sector) >= config->block_count || key == NULL ||
          before == NULL || after == NULL ||
          !mifare_trailer_access_bits_valid(after)))

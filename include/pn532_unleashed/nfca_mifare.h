@@ -108,12 +108,12 @@ extern "C"
      * Generic user-data writes still reject trailers. */
     nfc_status_t nfca_mifare_trailer_check(uint8_t sector,
                                            bool key_b,
-                                           const uint8_t key[6],
+                                           const uint8_t key[MIFARE_KEY_BYTES],
                                            const uint8_t before[16],
                                            const uint8_t after[16]);
     nfc_status_t nfca_mifare_trailer_write(uint8_t sector,
                                            bool key_b,
-                                           const uint8_t key[6],
+                                           const uint8_t key[MIFARE_KEY_BYTES],
                                            const uint8_t before[16],
                                            const uint8_t after[16]);
     /* Darkside is explicit, bounded work: start clears its context, step
