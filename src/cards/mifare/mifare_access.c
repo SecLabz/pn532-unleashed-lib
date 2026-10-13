@@ -23,10 +23,10 @@ static const uint8_t data_access[][2] RAM_DATA("mifare_access") = {
     {0u, 0u},
 };
 
+/* NXP MF1S50YYX_V1 table 7; index is C3:C2:C1, not printed C1:C2:C3. */
 static const uint8_t trailer_access[][2] RAM_DATA("mifare_access") = {
     {MIFARE_TRAILER_WRITE_KEY_A | MIFARE_TRAILER_READ_ACCESS |
-         MIFARE_TRAILER_WRITE_ACCESS | MIFARE_TRAILER_READ_KEY_B |
-         MIFARE_TRAILER_WRITE_KEY_B,
+         MIFARE_TRAILER_READ_KEY_B | MIFARE_TRAILER_WRITE_KEY_B,
      0u},
     {MIFARE_TRAILER_READ_ACCESS,
      MIFARE_TRAILER_WRITE_KEY_A | MIFARE_TRAILER_READ_ACCESS |
@@ -38,10 +38,10 @@ static const uint8_t trailer_access[][2] RAM_DATA("mifare_access") = {
          MIFARE_TRAILER_WRITE_KEY_B,
      0u},
     {MIFARE_TRAILER_READ_ACCESS,
+     MIFARE_TRAILER_READ_ACCESS | MIFARE_TRAILER_WRITE_ACCESS},
+    {MIFARE_TRAILER_READ_ACCESS,
      MIFARE_TRAILER_WRITE_KEY_A | MIFARE_TRAILER_READ_ACCESS |
          MIFARE_TRAILER_WRITE_ACCESS | MIFARE_TRAILER_WRITE_KEY_B},
-    {MIFARE_TRAILER_READ_ACCESS,
-     MIFARE_TRAILER_READ_ACCESS | MIFARE_TRAILER_WRITE_ACCESS},
     {MIFARE_TRAILER_READ_ACCESS, MIFARE_TRAILER_READ_ACCESS},
 };
 
@@ -96,6 +96,17 @@ RAM_FUNC(trailer_key_b_is_readable)(const uint8_t trailer[MIFARE_BLOCK_SIZE])
            (trailer_access[trailer_access_condition(
                 trailer, MIFARE_TRAILER_ACCESS_GROUP)][MIFARE_KEY_A] &
             MIFARE_TRAILER_READ_KEY_B) != 0u;
+}
+
+uint8_t mifare_trailer_key_permissions(const uint8_t trailer[16], uint8_t key)
+{
+    if (key > MIFARE_KEY_B || !mifare_trailer_access_bits_valid(trailer) ||
+        (key == MIFARE_KEY_B && trailer_key_b_is_readable(trailer)))
+    {
+        return 0u;
+    }
+    return trailer_access[trailer_access_condition(
+        trailer, MIFARE_TRAILER_ACCESS_GROUP)][key];
 }
 
 static uint8_t access_group(uint8_t block)

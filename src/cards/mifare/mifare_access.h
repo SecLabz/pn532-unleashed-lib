@@ -127,6 +127,8 @@ static inline bool mifare_is_sector_trailer(uint8_t block)
     return block == mifare_sector_trailer(mifare_block_sector(block));
 }
 
+/* Pure trailer permissions; readable Key B cannot authenticate. */
+uint8_t mifare_trailer_key_permissions(const uint8_t trailer[16], uint8_t key);
 bool mifare_trailer_access_bits_valid(const uint8_t trailer[MIFARE_BLOCK_SIZE]);
 uint8_t mifare_trailer_permissions(const mifare_access_t *access,
                                    uint8_t block);

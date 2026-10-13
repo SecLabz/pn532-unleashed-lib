@@ -94,15 +94,15 @@ nfc_status_t mifare_reader_authenticate(const nfca_tag_t *tag,
                                              reader_nonce);
 }
 
-nfc_status_t
-mifare_reader_authenticate_opcode(const nfca_tag_t *tag,
-                                  uint8_t block,
-                                  uint8_t opcode,
-                                  const uint8_t key[MIFARE_KEY_BYTES],
-                                  crypto1_state_t *cipher,
-                                  uint32_t *first_nonce,
-                                  uint32_t deadline_ticks,
-                                  uint32_t reader_nonce)
+static nfc_status_t authenticate(const nfca_tag_t *tag,
+                                 uint8_t block,
+                                 uint8_t opcode,
+                                 const uint8_t key[MIFARE_KEY_BYTES],
+                                 crypto1_state_t *cipher,
+                                 uint32_t *first_nonce,
+                                 uint32_t deadline_ticks,
+                                 uint32_t reader_nonce,
+                                 bool nested)
 {
     /* Entropy/table initialization must precede AUTH: the nonce challenge
      * starts a bounded card deadline, independent of host or transport. */
@@ -110,6 +110,10 @@ mifare_reader_authenticate_opcode(const nfca_tag_t *tag,
     reader_frame_t tx;
     nfca_pcd_response_t rx;
     mifare_reader_command(&tx, opcode, block);
+    if (nested)
+    {
+        mifare_reader_encrypt(cipher, &tx, 0u);
+    }
     nfc_status_t status =
         authentication_transfer(&tx, &rx, deadline_ticks, opcode);
     if (status != NFC_OK)
@@ -120,19 +124,41 @@ mifare_reader_authenticate_opcode(const nfca_tag_t *tag,
     {
         return NFC_ACCESS_DENIED;
     }
-    if (rx.size_bits != MIFARE_NONCE_BYTES * 8u || !rx.parity_valid)
+    if (rx.size_bits != MIFARE_NONCE_BYTES * 8u ||
+        (!nested && !rx.parity_valid))
     {
         return NFC_RF_ERROR;
     }
-    const uint32_t nonce = read_be32(rx.data);
+    const uint32_t encrypted_nonce = read_be32(rx.data);
+    const uint32_t uid =
+        read_be32(&tag->uid[tag->uid_size_bytes - NFCA_UID_FRAGMENT_BYTES]);
+    crypto1_init(cipher, crypto1_key_from_bytes(key));
+    const uint32_t keystream =
+        crypto1_word(cipher, uid ^ encrypted_nonce, nested);
+    const uint32_t nonce =
+        nested ? encrypted_nonce ^ keystream : encrypted_nonce;
+    if (nested)
+    {
+        const uint8_t stream_parity[4] = {
+            (keystream >> 16u) & 1u,
+            (keystream >> 8u) & 1u,
+            keystream & 1u,
+            crypto1_filter(cipher),
+        };
+        for (uint8_t byte = 0u; byte < MIFARE_NONCE_BYTES; byte++)
+        {
+            const uint8_t plain = nonce >> (24u - byte * 8u);
+            if (rx.parity[byte] !=
+                (nfca_odd_parity_bit(plain) ^ stream_parity[byte]))
+            {
+                return NFC_RF_ERROR;
+            }
+        }
+    }
     if (first_nonce != NULL)
     {
         *first_nonce = nonce;
     }
-    const uint32_t uid =
-        read_be32(&tag->uid[tag->uid_size_bytes - NFCA_UID_FRAGMENT_BYTES]);
-    crypto1_init(cipher, crypto1_key_from_bytes(key));
-    (void)crypto1_word(cipher, uid ^ nonce, false);
     (void)reader_frame_begin(&tx, MIFARE_READER_AUTH_BYTES);
     tx.byte_parity = true;
     write_be32(tx.data, reader_nonce);
@@ -154,6 +180,43 @@ mifare_reader_authenticate_opcode(const nfca_tag_t *tag,
                    crypto1_prng_successor(nonce, MIFARE_CARD_ANSWER_PRNG_STEPS)
                ? NFC_OK
                : NFC_ACCESS_DENIED;
+}
+
+nfc_status_t mifare_reader_authenticate_opcode(const nfca_tag_t *tag,
+                                               uint8_t block,
+                                               uint8_t opcode,
+                                               const uint8_t key[6],
+                                               crypto1_state_t *cipher,
+                                               uint32_t *first_nonce,
+                                               uint32_t deadline_ticks,
+                                               uint32_t reader_nonce)
+{
+    return authenticate(tag,
+                        block,
+                        opcode,
+                        key,
+                        cipher,
+                        first_nonce,
+                        deadline_ticks,
+                        reader_nonce,
+                        false);
+}
+
+nfc_status_t mifare_reader_authenticate_nested(const nfca_tag_t *tag,
+                                               const mifare_source_t *source,
+                                               crypto1_state_t *cipher,
+                                               uint32_t *nonce,
+                                               uint32_t reader_nonce)
+{
+    return authenticate(tag,
+                        source->block,
+                        source->key_b ? MIFARE_CMD_AUTH_B : MIFARE_CMD_AUTH_A,
+                        source->key,
+                        cipher,
+                        nonce,
+                        0u,
+                        reader_nonce,
+                        true);
 }
 
 nfc_status_t mifare_reader_block(crypto1_state_t *cipher,

@@ -2,6 +2,7 @@
 
 #include "cards/mifare/mifare_access.h"
 #include "common/crypto1.h"
+#include "pn532_unleashed/nfca_mifare.h"
 #include "protocols/nfca/reader.h"
 
 /* Borrowed credential; nonce is optional. Deadlines use fc/16 recovery ticks,
@@ -18,6 +19,12 @@ void mifare_reader_command(reader_frame_t *tx, uint8_t opcode, uint8_t block);
 void mifare_reader_encrypt(crypto1_state_t *cipher,
                            reader_frame_t *frame,
                            uint8_t input_size_bytes);
+/* Complete a known-key encrypted AUTH, replacing the authenticated cipher. */
+nfc_status_t mifare_reader_authenticate_nested(const nfca_tag_t *tag,
+                                               const mifare_source_t *source,
+                                               crypto1_state_t *cipher,
+                                               uint32_t *nonce,
+                                               uint32_t reader_nonce);
 /* Caller owns authenticated cipher and 16-byte block output; CRC/parity
  * checked. Output changes only on success. */
 nfc_status_t mifare_reader_block(crypto1_state_t *cipher,

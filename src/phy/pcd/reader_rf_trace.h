@@ -43,6 +43,15 @@ enum reader_rf_trace_reason
     READER_TRACE_RESPONSE_INVALID,
 };
 
+/* Begin invalidates the cached profile and enables unscheduled measurement.
+ * Seven non-NULL foreground timestamps delimit
+ * prepare/select/entropy/auth/target/expire. No RF data is retained. */
+void reader_rf_trace_collect_begin(bool enabled);
+void reader_rf_trace_collect(const uint32_t marks_us[7]);
+bool reader_rf_trace_collect_active(void);
+void reader_rf_trace_exchange(const uint32_t marks_us[4],
+                              uint32_t capture_us,
+                              uint32_t first_edge_us);
 void reader_rf_trace_reset(void);
 void reader_rf_trace_step(uint16_t index);
 void reader_rf_trace_stage(enum reader_rf_trace_stage stage);

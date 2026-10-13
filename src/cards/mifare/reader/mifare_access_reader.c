@@ -199,3 +199,147 @@ nfca_mifare_check_key(uint8_t block, bool key_b, const uint8_t key[6])
     mifare_access_reader_selected();
     return wrong_key ? NFC_ACCESS_DENIED : status;
 }
+
+static nfc_status_t verify_trailer(uint8_t block, const uint8_t after[16])
+{
+    nfc_status_t status = nfca_mifare_check_key(block, false, after);
+    if (status != NFC_OK)
+    {
+        return status;
+    }
+    status = authenticate(block, false, after);
+    if (status != NFC_OK || memcmp(&context.trailer[6], &after[6], 4u) != 0)
+    {
+        return status == NFC_OK ? NFC_INVALID_RESPONSE : status;
+    }
+    const bool readable_b =
+        (mifare_trailer_key_permissions(after, MIFARE_KEY_A) &
+         MIFARE_TRAILER_READ_KEY_B) != 0u;
+    if (readable_b)
+    {
+        return memcmp(&context.trailer[10], &after[10], 6u) == 0
+                   ? NFC_OK
+                   : NFC_INVALID_RESPONSE;
+    }
+    return nfca_mifare_check_key(block, true, &after[10]);
+}
+
+static nfc_status_t trailer_operation(uint8_t sector,
+                                      bool key_b,
+                                      const uint8_t key[6],
+                                      const uint8_t before[16],
+                                      const uint8_t after[16],
+                                      bool write)
+{
+    if (nfca_selected_tag() == NULL)
+    {
+        return NFC_BUSY;
+    }
+    const mifare_product_config_t *config =
+        mifare_model_config(nfca_selected_model());
+    nfc_status_t status = nfc_operation_require(NFC_STATE_READING_NFCA);
+    if (status == NFC_OK &&
+        (config == NULL || sector >= MIFARE_MAX_SECTORS ||
+         mifare_sector_trailer(sector) >= config->block_count || key == NULL ||
+         before == NULL || after == NULL ||
+         !mifare_trailer_access_bits_valid(after)))
+    {
+        status = NFC_INVALID_ARGUMENT;
+    }
+    bool write_started = false;
+    if (status == NFC_OK)
+    {
+        /* Never trust a cached trailer across a host planning/confirmation gap.
+         */
+        mifare_access_reader_reset();
+        status = nfca_reader_reselect_known(nfca_selected_tag(), 66u);
+    }
+    const uint8_t block =
+        sector < MIFARE_MAX_SECTORS ? mifare_sector_trailer(sector) : 0u;
+    if (status == NFC_OK)
+    {
+        mifare_access_reader_selected();
+        status = authenticate(block, key_b, key);
+    }
+    if (status == NFC_OK && memcmp(context.trailer, before, 16u) != 0)
+    {
+        status = NFC_CONTENT_CHANGED;
+    }
+    if (status == NFC_OK)
+    {
+        const uint8_t permissions =
+            mifare_trailer_key_permissions(context.trailer, (uint8_t)key_b);
+        if (memcmp(&before[6], &after[6], 4u) != 0 &&
+            (permissions & MIFARE_TRAILER_WRITE_ACCESS) == 0u)
+        {
+            status = NFC_ACCESS_DENIED;
+        }
+        /* A denied key field may only be preserved, never silently changed.
+         * Authenticate the proposed key to prove it already matches the card.
+         */
+        if (status == NFC_OK &&
+            (permissions & MIFARE_TRAILER_WRITE_KEY_A) == 0u)
+        {
+            status = nfca_mifare_check_key(block, false, after);
+        }
+        if (status == NFC_OK &&
+            (permissions & MIFARE_TRAILER_WRITE_KEY_B) == 0u)
+        {
+            const bool readable =
+                (mifare_trailer_key_permissions(before, MIFARE_KEY_A) &
+                 MIFARE_TRAILER_READ_KEY_B) != 0u;
+            status = readable ? (memcmp(&before[10], &after[10], 6u) == 0
+                                     ? NFC_OK
+                                     : NFC_ACCESS_DENIED)
+                              : nfca_mifare_check_key(block, true, &after[10]);
+        }
+        if (status == NFC_OK)
+        {
+            status = authenticate(block, key_b, key);
+            if (status == NFC_OK && memcmp(context.trailer, before, 16u) != 0)
+            {
+                status = NFC_CONTENT_CHANGED;
+            }
+        }
+    }
+    if (status == NFC_OK && write)
+    {
+        /* After a successful WRITE command, any failed check is uncertain. */
+        status = mifare_reader_write_opcode(
+            &context.cipher, block, MIFARE_CMD_WRITE, after);
+        write_started = status == NFC_OK || status == NFC_WRITE_OUTCOME_UNKNOWN;
+        mifare_access_reader_reset();
+        if (status == NFC_OK)
+        {
+            status = verify_trailer(block, after);
+        }
+        if (write_started && status != NFC_OK)
+        {
+            status = NFC_WRITE_OUTCOME_UNKNOWN;
+        }
+    }
+    const nfc_status_t cleanup = nfc_stop();
+    if (cleanup != NFC_OK)
+    {
+        return write_started ? NFC_WRITE_OUTCOME_UNKNOWN : cleanup;
+    }
+    return status;
+}
+
+nfc_status_t nfca_mifare_trailer_check(uint8_t sector,
+                                       bool key_b,
+                                       const uint8_t key[6],
+                                       const uint8_t before[16],
+                                       const uint8_t after[16])
+{
+    return trailer_operation(sector, key_b, key, before, after, false);
+}
+
+nfc_status_t nfca_mifare_trailer_write(uint8_t sector,
+                                       bool key_b,
+                                       const uint8_t key[6],
+                                       const uint8_t before[16],
+                                       const uint8_t after[16])
+{
+    return trailer_operation(sector, key_b, key, before, after, true);
+}

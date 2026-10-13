@@ -62,6 +62,7 @@ Use output only on success; masked trailer secrets remain unknown.
 | `nfca_mifare_probe()` | One fresh AUTH nonce |
 | `nfca_mifare_check_key()` | Check one supplied key; ACCESS_DENIED means no match |
 | `nfca_mifare_collect()` | One source/target nonce observation with raw parity |
+| `nfca_mifare_collect_static()` | One static-nonce observation, optionally advancing the known source |
 | `nfca_mifare_darkside_start()` / `_step()` | Explicit bounded steps and typed outcomes |
 
 Keep the selection for successive calls; stop on completion or error. Key
@@ -77,6 +78,18 @@ on CPU work or post-EOF capture. Scheduled acquisition and GDM authentication ke
 existing deadlines.
 Collection uses
 `scheduled = true` for fixed-deadline Nested work, `false` for Hardnested.
+Unscheduled Hardnested uses the Classic 66 us guard during known-identity
+reselection and target authentication, with a 1 ms target SOF timeout. Scheduled
+Nested and Static Nested retain their existing cadence. The physical capture
+grid, response validation, cipher cleanup and challenge expiration are unchanged.
+The reference application records on-air qualification separately.
+`nfca_mifare_collect_static(source, target_block, target_key_b, advance_source,
+observation)` adds a bounded Static Nested acquisition path. It completes one
+known authentication, or two when `advance_source` is true, then captures and
+expires the unknown target challenge. The observation records the last known
+source nonce. Encrypted nonce parity and both known authentication responses
+are validated physically; outputs change only on success. No card memory is
+written. Existing collection signatures and behavior remain unchanged.
 Darkside `DARKSIDE_MORE` requests another step, not a recovered key.
 [Acquisition contracts →](../include/pn532_unleashed/nfca_mifare.h)
 
@@ -137,3 +150,20 @@ recomputes BCC and verifies activation. Gen2/FUID/GDM need a six-byte key;
 GTU uses a four-byte password (`NULL` means zero). Its `_uid_probe()` is
 read-only. RF stops on return; never retry an uncertain write.
 [Methods and credentials →](../include/pn532_unleashed/nfca_mifare_uid.h)
+
+## Explicit trailer management
+
+In an expected-identity `nfca_select()` session,
+`nfca_mifare_trailer_check(sector, key_b, key, before, after)` checks a proposed
+replacement without writing. `nfca_mifare_trailer_write()` performs the same
+fresh checks and sends WRITE once. Both functions release the owned selection.
+The borrowed 16-byte before array is the exact observable trailer; after
+contains both new keys, valid access bytes and GPB. Preserve metadata explicitly
+when only changing keys. Manufacturer/user blocks cannot be targeted here.
+
+Credentials, access permissions and compare-before are verified immediately
+before writing. A denied key field may only be preserved, proven by
+authentication or a readable-Key-B comparison. The reader then reauthenticates
+and compares again. New A, usable B or readable B, and metadata are verified
+afterward. Unknown write outcomes forbid automatic retry. Generic user-data
+writes continue to reject all trailers.

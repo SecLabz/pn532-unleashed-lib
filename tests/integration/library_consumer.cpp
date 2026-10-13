@@ -135,6 +135,9 @@ int main()
     (void)nfca_mifare_read_block(
         0u, false, keys[0], nfca_dump.memory, &writable);
     (void)nfca_mifare_collect(&source, 4u, false, true, &observation);
+    (void)nfca_mifare_trailer_check(0u, false, keys[0], snapshot, snapshot);
+    (void)nfca_mifare_trailer_write(0u, false, keys[0], snapshot, snapshot);
+    (void)nfca_mifare_collect_static(&source, 4u, false, true, &observation);
     (void)nfca_mifare_darkside_start(0u, false, 0u);
     (void)nfca_mifare_darkside_step(&darkside);
     (void)nfc_stop();

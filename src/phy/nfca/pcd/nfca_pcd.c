@@ -40,6 +40,14 @@ static bool __not_in_flash_func(exchange)(const reader_frame_t *frame,
                                           uint32_t deadline_ticks,
                                           uint32_t sof_timeout_us)
 {
+#ifdef PNU_RF_TRACE
+    uint32_t marks_us[4] = {0};
+    const bool profile = reader_rf_trace_collect_active();
+    if (profile)
+    {
+        marks_us[0] = time_us_32();
+    }
+#endif
     *response = (nfca_pcd_response_t){0};
     if (max_bits == 0u || max_bits > NFCA_PCD_RX_MAX_BYTES * 8u ||
         !nfca_pcd_encode(frame, &tx_waveform))
@@ -47,6 +55,12 @@ static bool __not_in_flash_func(exchange)(const reader_frame_t *frame,
         READER_RF_TRACE_REASON(READER_TRACE_FRAME_INVALID);
         return false;
     }
+#ifdef PNU_RF_TRACE
+    if (profile)
+    {
+        marks_us[1] = time_us_32();
+    }
+#endif
     const uint32_t saved = save_and_disable_interrupts();
     if (!pn532_reader_sequence_play_at(
             &tx_waveform, NFCA_TX_TICK_FC, deadline_ticks))
@@ -75,6 +89,12 @@ static bool __not_in_flash_func(exchange)(const reader_frame_t *frame,
                                        NFCA_RX_WINDOW_US,
                                        &stats);
     restore_interrupts(saved);
+#ifdef PNU_RF_TRACE
+    if (profile)
+    {
+        marks_us[2] = time_us_32();
+    }
+#endif
 
     if (!stats.overflowed)
     {
@@ -94,6 +114,14 @@ static bool __not_in_flash_func(exchange)(const reader_frame_t *frame,
                               !stats.overflowed && response->framing_valid);
     /* A stalled RX FIFO loses the fixed sample grid. It is a failed physical
      * exchange, never the empty response used to represent tag silence. */
+#ifdef PNU_RF_TRACE
+    if (profile)
+    {
+        marks_us[3] = time_us_32();
+        reader_rf_trace_exchange(
+            marks_us, stats.capture_us, stats.first_edge_us);
+    }
+#endif
     return !stats.overflowed;
 }
 

@@ -14,8 +14,10 @@ The initial scope is:
 - NFC-A user-data restoration for those memory models, with expected-target
   identity, target credential/permission preflight and verified one-shot writes.
   Preserve manufacturer/UID, Classic trailers and Type 2 OTP/lock/config pages.
-- MIFARE Classic key recovery: dictionaries, Nested, Hardnested and Darkside,
-  orchestrated by the Rust pnu CLI with bounded direct-RF acquisition.
+- Explicit Classic sector-key and trailer-access changes, with expected-target
+  identity, permission preflight, one-shot writing and new-key verification.
+- MIFARE Classic key recovery: dictionaries, Nested, Static Nested, Hardnested
+  and Darkside, orchestrated by the Rust pnu CLI with bounded direct-RF acquisition.
 - MIFARE Classic magic-card generation and UID-change signature detection.
   Explicit magic-card UID writes use generation-specific paths with
   expected-identity validation and post-write verification; detection probes

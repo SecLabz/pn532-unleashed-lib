@@ -87,6 +87,35 @@ extern "C"
                                      bool target_key_b,
                                      bool scheduled,
                                      mifare_observation_t *observation);
+    /* Static Nested: optionally complete one additional known-source AUTH
+     * before requesting the target nonce. source_nonce is the last known
+     * source challenge, decrypted and authenticated. No keys are retained;
+     * output changes only on NFC_OK. Work is bounded to two complete source
+     * authentications and one incomplete target challenge, then expiration. */
+    nfc_status_t nfca_mifare_collect_static(const mifare_source_t *source,
+                                            uint8_t target_block,
+                                            bool target_key_b,
+                                            bool advance_source,
+                                            mifare_observation_t *observation);
+    /* Explicit trailer management in a validated nfca_select() session.
+     * All arrays are borrowed for the call. before is the exact 16-byte
+     * observable trailer (masked secrets included); after contains both new
+     * keys, valid access bytes and GPB. Check is read-only. Both functions
+     * release the owned selection on return. WRITE is sent once, only after
+     * fresh credential/permission/content checks; new A and usable B keys
+     * and readable metadata are verified. Unknown post-write outcomes return
+     * NFC_WRITE_OUTCOME_UNKNOWN and must never be retried automatically.
+     * Generic user-data writes still reject trailers. */
+    nfc_status_t nfca_mifare_trailer_check(uint8_t sector,
+                                           bool key_b,
+                                           const uint8_t key[6],
+                                           const uint8_t before[16],
+                                           const uint8_t after[16]);
+    nfc_status_t nfca_mifare_trailer_write(uint8_t sector,
+                                           bool key_b,
+                                           const uint8_t key[6],
+                                           const uint8_t before[16],
+                                           const uint8_t after[16]);
     /* Darkside is explicit, bounded work: start clears its context, step
      * performs one synchronization attempt. NFC_OK with MORE requests another
      * step. Each step completes the challenge and safely reselects before
