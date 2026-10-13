@@ -85,8 +85,8 @@ static void print_capture(void)
     for (unsigned index = 0u; index < frame_count; index++)
     {
         const nfca_sniff_frame_t *frame = &frames[index];
-        printf("%12" PRIu64 " | %-6s | %5u | %4u | %-9s | %-7s | %-13s |",
-               frame->start_fc,
+        printf("%12llu | %-6s | %5u | %4u | %-9s | %-7s | %-13s |",
+               (unsigned long long)frame->start_fc,
                frame->direction == NFCA_SNIFF_PCD ? "Reader" : "Tag",
                (unsigned)frame->size_bytes,
                (unsigned)frame->size_bits,
