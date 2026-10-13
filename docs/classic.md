@@ -64,7 +64,17 @@ Use output only on success; masked trailer secrets remain unknown.
 | `nfca_mifare_collect()` | One source/target nonce observation with raw parity |
 | `nfca_mifare_darkside_start()` / `_step()` | Explicit bounded steps and typed outcomes |
 
-Keep the selection for successive calls; stop on completion or error.
+Keep the selection for successive calls; stop on completion or error. Key
+checks use fresh authentication, reuse a verified plaintext selection, and
+address the known full UID when reselection is necessary. A successful check
+sends encrypted HALT before WUPA/SELECT; a failed candidate is also reselected
+before returning. Ordinary reads can safely follow either result. Classic
+AUTH waits at most 1 ms for SOF in each part
+([NXP MF1S50YYX/V1 table 21](https://cache.nxp.com/docs/en/data-sheet/MF1S50YYX_V1.pdf));
+capture still requires the same physical EOF. Ordinary AUTH and key-check
+reselection use a 66 us guard plus the unchanged 352/fc pre-SOF carrier; this exceeds 1172/fc without relying
+on CPU work or post-EOF capture. Scheduled acquisition and GDM authentication keep their
+existing deadlines.
 Collection uses
 `scheduled = true` for fixed-deadline Nested work, `false` for Hardnested.
 Darkside `DARKSIDE_MORE` requests another step, not a recovered key.

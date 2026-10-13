@@ -153,11 +153,16 @@ nfca_mifare_check_key(uint8_t block, bool key_b, const uint8_t key[6])
     {
         return required;
     }
+    const bool selected = !context.authenticated && !context.needs_reselection;
     mifare_access_reader_reset();
-    nfc_status_t status = nfca_reader_reselect(nfca_selected_tag());
-    if (status != NFC_OK)
+    nfc_status_t status = NFC_OK;
+    if (!selected)
     {
-        return status;
+        status = nfca_reader_reselect_known(nfca_selected_tag(), 66u);
+        if (status != NFC_OK)
+        {
+            return status;
+        }
     }
     crypto1_state_t cipher = {0};
     status = mifare_reader_authenticate(nfca_selected_tag(),
@@ -168,22 +173,28 @@ nfca_mifare_check_key(uint8_t block, bool key_b, const uint8_t key[6])
                                         NULL,
                                         0u,
                                         get_rand_32());
-    crypto1_clear(&cipher);
     const bool wrong_key = status == NFC_ACCESS_DENIED || status == NFC_NO_TAG;
+    if (status == NFC_OK)
+    {
+        reader_frame_t halt;
+        mifare_reader_command(&halt, NFCA_CMD_HALT, 0u);
+        mifare_reader_encrypt(&cipher, &halt, 0u);
+        status = nfca_reader_transfer_frame(&halt, NULL, 0u, false);
+    }
+    crypto1_clear(&cipher);
     if (!wrong_key && status != NFC_OK)
     {
         return status;
     }
-    if (wrong_key)
+    /* A valid authentication permits encrypted HALT, avoiding the ignored
+     * first WUPA while the card cipher is active. Reset after a wrong
+     * candidate before ordinary reads resume; the cached reader cipher was
+     * discarded above. */
+    const nfc_status_t selection =
+        nfca_reader_reselect_known(nfca_selected_tag(), 66u);
+    if (selection != NFC_OK)
     {
-        sleep_us(300u);
-    }
-    /* Reset the card's cipher even after a wrong candidate before ordinary
-     * reads resume; the cached reader cipher was discarded above. */
-    const nfc_status_t selected = nfca_reader_reselect(nfca_selected_tag());
-    if (selected != NFC_OK)
-    {
-        return selected;
+        return selection;
     }
     mifare_access_reader_selected();
     return wrong_key ? NFC_ACCESS_DENIED : status;

@@ -1,5 +1,6 @@
 #include "phy/nfca/pcd/nfca_pcd_encode.h"
 
+#include "common/compiler.h"
 #include "pn532_unleashed/integrity.h"
 
 #include <stddef.h>
@@ -51,8 +52,8 @@ append_bit(reader_tx_waveform_t *waveform, bool bit, bool *previous_was_x)
     return result;
 }
 
-bool nfca_pcd_encode(const reader_frame_t *frame,
-                     reader_tx_waveform_t *waveform)
+bool RAM_FUNC(nfca_pcd_encode)(const reader_frame_t *frame,
+                               reader_tx_waveform_t *waveform)
 {
     if (frame == NULL || waveform == NULL || frame->length == 0u ||
         frame->length > READER_FRAME_MAX_BYTES || frame->last_byte_bits > 7u)

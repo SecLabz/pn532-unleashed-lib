@@ -26,10 +26,12 @@ bool nfca_reader_stop(void)
     return pn532_frontend_stop();
 }
 
-nfc_status_t nfca_reader_transfer_at(const reader_frame_t *tx,
-                                     nfca_pcd_response_t *rx,
-                                     uint16_t max_bits,
-                                     uint32_t deadline_ticks)
+static nfc_status_t transfer(const reader_frame_t *tx,
+                             nfca_pcd_response_t *rx,
+                             uint16_t max_bits,
+                             uint32_t deadline_ticks,
+                             uint32_t sof_timeout_us,
+                             uint32_t guard_us)
 {
     if (!active || tx == NULL || rx == NULL)
     {
@@ -39,11 +41,13 @@ nfc_status_t nfca_reader_transfer_at(const reader_frame_t *tx,
      * from its response, or restart an authenticated card session. */
     if (deadline_ticks == 0u)
     {
-        sleep_us(NFCA_READER_GUARD_US);
+        sleep_us(guard_us);
     }
     const bool sent =
         deadline_ticks == 0u
-            ? nfca_pcd_exchange(tx, rx, max_bits)
+            ? (sof_timeout_us == 0u
+                   ? nfca_pcd_exchange(tx, rx, max_bits)
+                   : nfca_pcd_exchange_timed(tx, rx, max_bits, sof_timeout_us))
             : nfca_pcd_exchange_at(tx, rx, max_bits, deadline_ticks);
     READER_RF_TRACE_RESPONSE(sent,
                              rx->size_bits,
@@ -62,6 +66,23 @@ nfc_status_t nfca_reader_transfer_at(const reader_frame_t *tx,
     return NFC_OK;
 }
 
+nfc_status_t nfca_reader_transfer_at(const reader_frame_t *tx,
+                                     nfca_pcd_response_t *rx,
+                                     uint16_t max_bits,
+                                     uint32_t deadline_ticks)
+{
+    return transfer(tx, rx, max_bits, deadline_ticks, 0u, NFCA_READER_GUARD_US);
+}
+
+nfc_status_t nfca_reader_transfer_timed(const reader_frame_t *tx,
+                                        nfca_pcd_response_t *rx,
+                                        uint16_t max_bits,
+                                        uint32_t sof_timeout_us,
+                                        uint32_t guard_us)
+{
+    return transfer(tx, rx, max_bits, 0u, sof_timeout_us, guard_us);
+}
+
 nfc_status_t nfca_reader_transfer(const reader_frame_t *tx,
                                   nfca_pcd_response_t *rx,
                                   uint16_t max_bits)
@@ -69,7 +90,8 @@ nfc_status_t nfca_reader_transfer(const reader_frame_t *tx,
     return nfca_reader_transfer_at(tx, rx, max_bits, 0u);
 }
 
-static nfc_status_t request_atqa(nfca_tag_t *tag, bool wakeup, uint8_t attempts)
+static nfc_status_t
+request_atqa(nfca_tag_t *tag, bool wakeup, uint8_t attempts, uint32_t guard_us)
 {
     reader_frame_t tx;
     nfca_pcd_response_t rx;
@@ -80,7 +102,7 @@ static nfc_status_t request_atqa(nfca_tag_t *tag, bool wakeup, uint8_t attempts)
     nfc_status_t status = NFC_NO_TAG;
     for (uint8_t attempt = 0u; attempt < attempts; attempt++)
     {
-        status = nfca_reader_transfer(&tx, &rx, sizeof(tag->atqa) * 8u);
+        status = transfer(&tx, &rx, sizeof(tag->atqa) * 8u, 0u, 0u, guard_us);
         if (status != NFC_NO_TAG)
         {
             break;
@@ -102,7 +124,8 @@ static nfc_status_t request_atqa(nfca_tag_t *tag, bool wakeup, uint8_t attempts)
 static nfc_status_t select_cascade(nfca_tag_t *tag,
                                    const nfca_tag_t *known,
                                    uint8_t cascade,
-                                   bool *complete)
+                                   bool *complete,
+                                   uint32_t guard_us)
 {
     reader_frame_t tx;
     nfca_pcd_response_t rx;
@@ -133,7 +156,8 @@ static nfc_status_t select_cascade(nfca_tag_t *tag,
         tx.data[0] = command;
         tx.data[1] = NFCA_ANTICOLLISION_NVB;
         READER_RF_TRACE_SELECT(READER_TRACE_SELECT_ANTICOLLISION);
-        status = nfca_reader_transfer(&tx, &rx, NFCA_ANTICOLLISION_BYTES * 8u);
+        status =
+            transfer(&tx, &rx, NFCA_ANTICOLLISION_BYTES * 8u, 0u, 0u, guard_us);
         if (status != NFC_OK)
         {
             return status;
@@ -164,7 +188,7 @@ static nfc_status_t select_cascade(nfca_tag_t *tag,
            uid_bytes);
     tag->uid_size_bytes += uid_bytes;
     READER_RF_TRACE_SELECT(READER_TRACE_SELECT_SELECT);
-    status = nfca_reader_transfer(&tx, &rx, NFCA_SAK_FRAME_BYTES * 8u);
+    status = transfer(&tx, &rx, NFCA_SAK_FRAME_BYTES * 8u, 0u, 0u, guard_us);
     if (status != NFC_OK)
     {
         return status;
@@ -187,9 +211,10 @@ static nfc_status_t select_cascade(nfca_tag_t *tag,
 static nfc_status_t select_tag(nfca_tag_t *tag,
                                bool wakeup,
                                const nfca_tag_t *known,
-                               uint8_t attempts)
+                               uint8_t attempts,
+                               uint32_t guard_us)
 {
-    nfc_status_t status = request_atqa(tag, wakeup, attempts);
+    nfc_status_t status = request_atqa(tag, wakeup, attempts, guard_us);
     if (status != NFC_OK)
     {
         return status;
@@ -197,7 +222,7 @@ static nfc_status_t select_tag(nfca_tag_t *tag,
     for (uint8_t cascade = 0u; cascade < NFCA_CASCADE_LEVELS; cascade++)
     {
         bool complete;
-        status = select_cascade(tag, known, cascade, &complete);
+        status = select_cascade(tag, known, cascade, &complete, guard_us);
         if (status != NFC_OK)
         {
             return status;
@@ -222,7 +247,7 @@ static nfc_status_t start(nfca_tag_t *tag, uint8_t attempts, bool wakeup)
         return status;
     }
     *tag = (nfca_tag_t){0};
-    return select_tag(tag, wakeup, NULL, attempts);
+    return select_tag(tag, wakeup, NULL, attempts, NFCA_READER_GUARD_US);
 }
 
 nfc_status_t nfca_reader_open(void)
@@ -250,7 +275,8 @@ nfc_status_t nfca_reader_select_tag(nfca_tag_t *tag)
         return NFC_INVALID_ARGUMENT;
     }
     nfca_tag_t selected = {0};
-    const nfc_status_t status = select_tag(&selected, true, NULL, 1u);
+    const nfc_status_t status =
+        select_tag(&selected, true, NULL, 1u, NFCA_READER_GUARD_US);
     if (status == NFC_OK)
     {
         *tag = selected;
@@ -315,8 +341,8 @@ nfc_status_t nfca_reader_restart(const nfca_tag_t *expected)
 nfc_status_t nfca_reader_reselect(const nfca_tag_t *expected)
 {
     nfca_tag_t tag = {0};
-    const nfc_status_t status =
-        select_tag(&tag, true, NULL, NFCA_SELECTION_ATTEMPTS);
+    const nfc_status_t status = select_tag(
+        &tag, true, NULL, NFCA_SELECTION_ATTEMPTS, NFCA_READER_GUARD_US);
     if (status != NFC_OK)
     {
         return status;
@@ -325,7 +351,8 @@ nfc_status_t nfca_reader_reselect(const nfca_tag_t *expected)
     return memcmp(&tag, expected, sizeof(tag)) == 0 ? NFC_OK : NFC_RF_ERROR;
 }
 
-nfc_status_t nfca_reader_reselect_known(const nfca_tag_t *expected)
+nfc_status_t nfca_reader_reselect_known(const nfca_tag_t *expected,
+                                        uint32_t guard_us)
 {
     if (expected == NULL ||
         (expected->uid_size_bytes != NFCA_UID_SINGLE_BYTES &&
@@ -335,7 +362,7 @@ nfc_status_t nfca_reader_reselect_known(const nfca_tag_t *expected)
     }
     nfca_tag_t tag = {0};
     const nfc_status_t status =
-        select_tag(&tag, true, expected, NFCA_SELECTION_ATTEMPTS);
+        select_tag(&tag, true, expected, NFCA_SELECTION_ATTEMPTS, guard_us);
     if (status != NFC_OK)
     {
         return status;

@@ -45,7 +45,7 @@ void mifare_recovery_reset(void)
 }
 nfc_status_t mifare_recovery_reselect(void)
 {
-    return nfca_reader_reselect_known(nfca_selected_tag());
+    return nfca_reader_reselect_known(nfca_selected_tag(), 100u);
 }
 
 bool mifare_recovery_valid_block(uint8_t block)

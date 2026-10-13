@@ -55,6 +55,25 @@ static nfc_status_t decrypt(crypto1_state_t *cipher,
     return NFC_OK;
 }
 
+static nfc_status_t authentication_transfer(const reader_frame_t *tx,
+                                            nfca_pcd_response_t *rx,
+                                            uint32_t deadline_ticks,
+                                            uint8_t opcode)
+{
+    if (deadline_ticks != 0u ||
+        (opcode != MIFARE_CMD_AUTH_A && opcode != MIFARE_CMD_AUTH_B))
+    {
+        return nfca_reader_transfer_at(
+            tx, rx, MIFARE_NONCE_BYTES * 8u, deadline_ticks);
+    }
+    /* Classic authentication parts 1 and 2 allow 1 ms to start a reply
+     * (NXP MF1S50YYX/V1, table 21). Type 2's 5 ms wait is unrelated. */
+    /* 66 us plus the encoder's 352/fc carrier guard exceeds 1172/fc
+     * (86.43 us), even without counting post-EOF capture or CPU work. */
+    return nfca_reader_transfer_timed(
+        tx, rx, MIFARE_NONCE_BYTES * 8u, 1000u, 66u);
+}
+
 nfc_status_t mifare_reader_authenticate(const nfca_tag_t *tag,
                                         uint8_t block,
                                         bool key_b,
@@ -91,8 +110,8 @@ mifare_reader_authenticate_opcode(const nfca_tag_t *tag,
     reader_frame_t tx;
     nfca_pcd_response_t rx;
     mifare_reader_command(&tx, opcode, block);
-    nfc_status_t status = nfca_reader_transfer_at(
-        &tx, &rx, MIFARE_NONCE_BYTES * 8u, deadline_ticks);
+    nfc_status_t status =
+        authentication_transfer(&tx, &rx, deadline_ticks, opcode);
     if (status != NFC_OK)
     {
         return status;
@@ -120,11 +139,8 @@ mifare_reader_authenticate_opcode(const nfca_tag_t *tag,
     write_be32(&tx.data[MIFARE_NONCE_BYTES],
                crypto1_prng_successor(nonce, MIFARE_READER_ANSWER_PRNG_STEPS));
     mifare_reader_encrypt(cipher, &tx, MIFARE_NONCE_BYTES);
-    status = nfca_reader_transfer_at(
-        &tx,
-        &rx,
-        MIFARE_NONCE_BYTES * 8u,
-        deadline_ticks != 0u ? deadline_ticks + 2048u : 0u);
+    status = authentication_transfer(
+        &tx, &rx, deadline_ticks != 0u ? deadline_ticks + 2048u : 0u, opcode);
     if (status != NFC_OK)
     {
         return status;

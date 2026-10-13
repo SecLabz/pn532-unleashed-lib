@@ -1,3 +1,4 @@
+#include "common/compiler.h"
 #include "phy/nfca/pcd/nfca_pcd.h"
 #include "pn532_unleashed/integrity.h"
 
@@ -5,10 +6,10 @@
 
 #define ACTIVE_MIN_EDGES 2u
 
-void nfca_pcd_decode(const uint32_t *words,
-                     uint16_t sample_count,
-                     uint16_t max_bits,
-                     nfca_pcd_response_t *response)
+void RAM_FUNC(nfca_pcd_decode)(const uint32_t *words,
+                               uint16_t sample_count,
+                               uint16_t max_bits,
+                               nfca_pcd_response_t *response)
 {
     *response = (nfca_pcd_response_t){.parity_valid = true};
     if (words == NULL || sample_count < 2u * NFCA_PCD_RX_SAMPLES_PER_HALF ||
@@ -30,8 +31,11 @@ void nfca_pcd_decode(const uint32_t *words,
         const uint32_t levels = words[word];
         const uint32_t previous_levels = (levels << 1u) | previous_level;
         const uint32_t rises = levels & ~previous_levels;
+        /* Classification only distinguishes zero, one and at least two
+         * rises. Saturating each word at two preserves that threshold across
+         * both words and avoids software popcount on Cortex-M0+. */
         edges[word / NFCA_PCD_RX_WORDS_PER_HALF] +=
-            (uint8_t)__builtin_popcount(rises);
+            (uint8_t)((rises != 0u) + ((rises & (rises - 1u)) != 0u));
         previous_level = levels >> 31u;
     }
     if (edges[0] < ACTIVE_MIN_EDGES || edges[1] >= ACTIVE_MIN_EDGES)

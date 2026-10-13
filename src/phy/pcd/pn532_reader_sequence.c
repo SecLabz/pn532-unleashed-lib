@@ -15,7 +15,6 @@
 
 #define TX_PIO RF_TX_PIO
 #define TX_SM RF_TX_SM
-#define MAX_SLOTS (RF_CAPTURE_READER_TX_SLOT_WORDS - 1u)
 #define SETUP_TIMEOUT_US 1000u
 /* At 13.56 MHz, one carrier period is exactly 25/339 us. */
 #define CARRIER_PERIOD_US_NUMERATOR 25u
@@ -89,40 +88,6 @@ bool pn532_reader_sequence_init(void)
     return true;
 }
 
-static bool
-__not_in_flash_func(build_slots)(const reader_tx_waveform_t *waveform,
-                                 uint16_t tick_fc,
-                                 uint32_t *slots,
-                                 uint16_t *count)
-{
-    *count = 0u;
-    if (waveform == NULL || tick_fc == 0u ||
-        waveform->count > READER_TX_WAVEFORM_MAX_SEGMENTS)
-    {
-        return false;
-    }
-    for (uint16_t index = 0u; index < waveform->count; index++)
-    {
-        const reader_tx_segment_t *segment = &waveform->segments[index];
-        if (segment->duration_fc % tick_fc != 0u ||
-            segment->level > READER_TX_LEVEL_FULL)
-        {
-            return false;
-        }
-        const uint16_t length = segment->duration_fc / tick_fc;
-        if ((uint32_t)*count + length > MAX_SLOTS)
-        {
-            return false;
-        }
-        for (uint16_t slot = 0u; slot < length; slot++)
-        {
-            slots[(*count)++] = segment->level == READER_TX_LEVEL_FULL;
-        }
-    }
-    slots[*count] = 1u;
-    return *count != 0u;
-}
-
 bool __not_in_flash_func(pn532_reader_sequence_play_at)(
     const reader_tx_waveform_t *waveform,
     uint16_t tick_fc,
@@ -142,7 +107,8 @@ bool __not_in_flash_func(pn532_reader_sequence_play_at)(
     }
     uint32_t *slots = scratch->reader_tx_slot_words;
     uint16_t count;
-    if (!build_slots(waveform, tick_fc, slots, &count))
+    if (!reader_tx_waveform_slots(
+            waveform, tick_fc, slots, RF_CAPTURE_READER_TX_SLOT_WORDS, &count))
     {
         rf_capture_scratch_release(RF_CAPTURE_SCRATCH_READER_TX);
         READER_RF_TRACE_REASON(READER_TRACE_FRAME_INVALID);
