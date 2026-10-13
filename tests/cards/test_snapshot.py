@@ -23,6 +23,7 @@ class SnapshotTests(unittest.TestCase):
     extra_sources = (
         "tests/cards/snapshot_bridge.c",
         "src/core.c",
+        "tests/api/sniff_stub.c",
         "src/board/board_config.c",
         "src/emulation/emulation.c",
         "src/emulation/snapshot.c",

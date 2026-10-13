@@ -22,7 +22,7 @@
 #define NFCV_BOUNDARY_SYMBOLS 8u
 #define NFCV_DATA_BYTE_SYMBOLS 16u
 
-static bool level_sample_at(const uint32_t *words, uint16_t sample)
+static bool level_sample_at(const uint32_t *words, uint32_t sample)
 {
     return ((words[sample / READER_RX_SAMPLES_PER_WORD] >>
              (sample % READER_RX_SAMPLES_PER_WORD)) &
@@ -33,25 +33,25 @@ static bool level_sample_at(const uint32_t *words, uint16_t sample)
  * return low within 1..3 samples and repeat every 3..5 samples at 8/fc.
  * Count complete physical cycles, excluding isolated comparator transitions. */
 static unsigned
-subcarrier_cycles(const uint32_t *words, uint16_t first, uint16_t end)
+subcarrier_cycles(const uint32_t *words, uint32_t first, uint32_t end)
 {
-    uint16_t rise = UINT16_MAX;
-    uint16_t last_pulse = UINT16_MAX;
+    uint32_t rise = UINT32_MAX;
+    uint32_t last_pulse = UINT32_MAX;
     unsigned cycles = 0u;
     bool previous = first != 0u && level_sample_at(words, first - 1u);
-    for (uint16_t sample = first; sample < end; sample++)
+    for (uint32_t sample = first; sample < end; sample++)
     {
         const bool current = level_sample_at(words, sample);
         if (current && !previous)
         {
             rise = sample;
         }
-        else if (!current && previous && rise != UINT16_MAX)
+        else if (!current && previous && rise != UINT32_MAX)
         {
             const unsigned width = sample - rise;
             if (width <= NFCV_PULSE_MAX_SAMPLES)
             {
-                if (last_pulse != UINT16_MAX)
+                if (last_pulse != UINT32_MAX)
                 {
                     const unsigned period = rise - last_pulse;
                     cycles += period >= NFCV_PERIOD_MIN_SAMPLES &&
@@ -59,7 +59,7 @@ subcarrier_cycles(const uint32_t *words, uint16_t first, uint16_t end)
                 }
                 last_pulse = rise;
             }
-            rise = UINT16_MAX;
+            rise = UINT32_MAX;
         }
         previous = current;
     }
@@ -70,22 +70,22 @@ subcarrier_cycles(const uint32_t *words, uint16_t first, uint16_t end)
  * 96/32/32-sample windows represent 24 cycles, silence, then eight cycles.
  * Bounds allow comparator edge distortion; no phase ranking or CRC search.
  * Half-bit activity requires at least four complete fc/32 cycles. */
-static bool find_sof(const uint32_t *words, uint16_t count, uint16_t *start)
+bool nfcv_find_sof(const uint32_t *words, uint32_t count, uint32_t *start)
 {
     bool previous = false;
-    for (uint16_t sample = 0u; (uint32_t)sample + NFCV_SOF_END_SAMPLE <= count;
+    for (uint32_t sample = 0u; (uint32_t)sample + NFCV_SOF_END_SAMPLE <= count;
          sample++)
     {
         const bool current = level_sample_at(words, sample);
         if (current && !previous)
         {
-            uint16_t fall = sample + 1u;
+            uint32_t fall = sample + 1u;
             while (fall <= sample + NFCV_PULSE_MAX_SAMPLES &&
                    level_sample_at(words, fall))
             {
                 fall++;
             }
-            const uint16_t quiet_start =
+            const uint32_t quiet_start =
                 sample >= NFCV_SYMBOL_TICKS ? sample - NFCV_SYMBOL_TICKS : 0u;
             if (fall <= sample + NFCV_PULSE_MAX_SAMPLES &&
                 subcarrier_cycles(words, quiet_start, sample) <=
@@ -163,7 +163,9 @@ static bool eof_seen(const uint8_t *cycles)
 
 static bool decode_cycles(const uint8_t *cycles,
                           uint16_t symbol_count,
-                          nfcv_pcd_rx_result_t *result)
+                          uint8_t *data,
+                          uint16_t capacity,
+                          nfcv_level_result_t *result)
 {
     if (symbol_count < 2u * NFCV_BOUNDARY_SYMBOLS)
     {
@@ -186,9 +188,12 @@ static bool decode_cycles(const uint8_t *cycles,
         if (eof_seen(&cycles[pos]))
         {
             result->eof_seen = true;
+            result->end_sample =
+                (pos - NFCV_FIRST_ACTIVE_SYMBOL + NFCV_BOUNDARY_SYMBOLS) *
+                NFCV_SYMBOL_TICKS;
             break;
         }
-        if (result->size_bytes == NFCV_PCD_RX_MAX_BYTES)
+        if (result->size_bytes == capacity)
         {
             break;
         }
@@ -220,16 +225,53 @@ static bool decode_cycles(const uint8_t *cycles,
         {
             break;
         }
-        result->bytes[result->size_bytes++] = value;
+        data[result->size_bytes++] = value;
     }
     if (!result->eof_seen)
     {
         result->framing_valid = false;
-        result->truncated = result->size_bytes == NFCV_PCD_RX_MAX_BYTES;
+        result->truncated = result->size_bytes == capacity;
     }
     result->crc_ok = result->size_bytes >= 1u + NFC_CRC_BYTES &&
-                     nfcv_check_crc(result->bytes, result->size_bytes);
+                     nfcv_check_crc(data, result->size_bytes);
     return result->framing_valid && result->eof_seen && result->crc_ok;
+}
+
+bool nfcv_decode_levels(const uint32_t *words,
+                        uint32_t count,
+                        uint8_t *data,
+                        uint16_t capacity,
+                        nfcv_level_result_t *result)
+{
+    if (result == NULL)
+    {
+        return false;
+    }
+    memset(result, 0, sizeof(*result));
+    uint32_t sof_start;
+    if (words == NULL || data == NULL || capacity == 0u ||
+        capacity > NFCV_RESPONSE_MAX_BYTES ||
+        !nfcv_find_sof(words, count, &sof_start))
+    {
+        return false;
+    }
+    /* One foreground RF owner. Reserve only the actual supported maximum;
+     * keeping scratch static avoids a large RF/USB call stack. */
+    static uint8_t cycles[NFCV_RESPONSE_MAX_BYTES * 16u + 16u];
+    memset(cycles, 0, NFCV_FIRST_ACTIVE_SYMBOL);
+    uint16_t symbol = NFCV_FIRST_ACTIVE_SYMBOL;
+    uint32_t first = sof_start;
+    const uint16_t maximum = capacity * 16u + 16u;
+    while (first + NFCV_SYMBOL_TICKS <= count && symbol < maximum)
+    {
+        cycles[symbol++] =
+            (uint8_t)subcarrier_cycles(words, first, first + NFCV_SYMBOL_TICKS);
+        first += NFCV_SYMBOL_TICKS;
+    }
+    const bool valid = decode_cycles(cycles, symbol, data, capacity, result);
+    result->start_sample = sof_start;
+    result->end_sample += sof_start;
+    return valid;
 }
 
 bool nfcv_pcd_decode_level_samples(const uint32_t *sample_words,
@@ -241,23 +283,17 @@ bool nfcv_pcd_decode_level_samples(const uint32_t *sample_words,
         return false;
     }
     memset(result, 0, sizeof(*result));
-    uint16_t sof_start;
-    if (sample_words == NULL ||
-        !find_sof(sample_words, sample_count, &sof_start))
-    {
-        return false;
-    }
-
-    uint8_t cycles[NFCV_PCD_MAX_SYMBOLS] = {0};
-    uint16_t symbol = NFCV_FIRST_ACTIVE_SYMBOL;
-    uint16_t first = sof_start;
-    while ((uint32_t)first + NFCV_SYMBOL_TICKS <= sample_count &&
-           symbol < NFCV_PCD_MAX_SYMBOLS)
-    {
-        cycles[symbol] = (uint8_t)subcarrier_cycles(
-            sample_words, first, first + NFCV_SYMBOL_TICKS);
-        symbol++;
-        first += NFCV_SYMBOL_TICKS;
-    }
-    return decode_cycles(cycles, symbol, result);
+    nfcv_level_result_t physical;
+    const bool valid = nfcv_decode_levels(sample_words,
+                                          sample_count,
+                                          result->bytes,
+                                          sizeof(result->bytes),
+                                          &physical);
+    result->size_bytes = (uint8_t)physical.size_bytes;
+    result->sof_seen = physical.sof_seen;
+    result->eof_seen = physical.eof_seen;
+    result->crc_ok = physical.crc_ok;
+    result->framing_valid = physical.framing_valid;
+    result->truncated = physical.truncated;
+    return valid;
 }

@@ -16,6 +16,7 @@ typedef enum
     FRONTEND_IDLE,
     FRONTEND_TAG,
     FRONTEND_READER,
+    FRONTEND_SNIFF,
 } frontend_role_t;
 
 /* ready implies an armed tag or configured reader; field_enabled belongs
@@ -61,6 +62,7 @@ static const uint16_t reader_registers[] = {
     CIU_MOD_GS_P,
     CIU_SIC_CLK_EN,
     CIU_CONTROL,
+    PN532_NFC_WI_CONTROL,
 };
 static uint8_t
     reader_values[sizeof(reader_registers) / sizeof(reader_registers[0])];
@@ -291,16 +293,22 @@ static reader_rx_settings_t reader_rx_settings(uint8_t protocol)
                                                     : NFCA_RX_Q_33_DB];
 }
 
-bool pn532_frontend_prepare_reader(uint8_t protocol)
+static bool prepare_receiver(uint8_t protocol, bool passive)
 {
-    if (ready && role == FRONTEND_READER && reader_protocol == protocol)
+    if (!passive && ready && role == FRONTEND_READER &&
+        reader_protocol == protocol)
     {
         return true;
     }
-    const bool enable = field_enabled;
+    const bool enable = !passive && field_enabled;
     ready = false;
     if ((protocol != PN532_PROTOCOL_NFCA && protocol != PN532_PROTOCOL_NFCV) ||
         !pn532_frontend_init() || !quiet() || !save_reader_config())
+    {
+        return failed();
+    }
+    if (passive && !pn532_update_register(
+                       PN532_NFC_WI_CONTROL, PN532_NFC_WI_COUNTER_MASK, 0u))
     {
         return failed();
     }
@@ -313,12 +321,19 @@ bool pn532_frontend_prepare_reader(uint8_t protocol)
                                CIU_MODE_CONTROL_MASK,
                                CIU_MODE_SIGIN_HIGH | CIU_MODE_DETECT_OFF) ||
         !pn532_write_register(CIU_TX_MODE, CIU_TX_MODE_NFCA_106) ||
-        !pn532_write_register(CIU_RX_MODE, CIU_RX_MODE_COMPARATOR) ||
+        !pn532_write_register(CIU_RX_MODE,
+                              passive ? CIU_RX_MODE_NFCA_MULTIPLE
+                                      : CIU_RX_MODE_COMPARATOR) ||
         !pn532_write_register(CIU_RX_SEL, CIU_RX_SEL_ANALOG))
     {
         return failed();
     }
-    const reader_rx_settings_t rx = reader_rx_settings(protocol);
+    reader_rx_settings_t rx = reader_rx_settings(protocol);
+    if (passive)
+    {
+        rx.demod = CIU_DEMOD_FREEZE_CHANNEL;
+        rx.gain = CIU_RF_RX_GAIN_33_DB;
+    }
     /* Receive threshold, demodulation, filter and external clock. */
     if (!pn532_update_register(
             CIU_RX_THRESHOLD, CIU_RX_THRESHOLD_MASK, CIU_RX_THRESHOLD_READER) ||
@@ -330,8 +345,9 @@ bool pn532_frontend_prepare_reader(uint8_t protocol)
                                    (protocol == PN532_PROTOCOL_NFCA
                                         ? CIU_HPCF_848_KHZ
                                         : CIU_HPCF_106_KHZ)) ||
-        !pn532_update_register(
-            CIU_TX_BIT_PHASE, CIU_RX_CLOCK_EXTERNAL, CIU_RX_CLOCK_EXTERNAL))
+        !pn532_update_register(CIU_TX_BIT_PHASE,
+                               CIU_RX_CLOCK_EXTERNAL,
+                               passive ? 0u : CIU_RX_CLOCK_EXTERNAL))
     {
         return failed();
     }
@@ -353,16 +369,22 @@ bool pn532_frontend_prepare_reader(uint8_t protocol)
     {
         return failed();
     }
-    gpio_init(TAG_LOAD_GPIO);
-    gpio_put(TAG_LOAD_GPIO, true);
-    gpio_set_dir(TAG_LOAD_GPIO, GPIO_OUT);
-    gpio_set_drive_strength(TAG_LOAD_GPIO, GPIO_DRIVE_STRENGTH_12MA);
-    gpio_set_slew_rate(TAG_LOAD_GPIO, GPIO_SLEW_RATE_FAST);
+    if (!passive)
+    {
+        gpio_init(TAG_LOAD_GPIO);
+        gpio_put(TAG_LOAD_GPIO, true);
+        gpio_set_dir(TAG_LOAD_GPIO, GPIO_OUT);
+        gpio_set_drive_strength(TAG_LOAD_GPIO, GPIO_DRIVE_STRENGTH_12MA);
+        gpio_set_slew_rate(TAG_LOAD_GPIO, GPIO_SLEW_RATE_FAST);
+    }
     if (!pn532_update_register(PN532_CONTROL_SWITCH_RNG,
                                PN532_SVDD_CONTROL_MASK,
-                               PN532_SVDD_ENABLE) ||
+                               (passive ? PN532_SVDD_HIDE_SIGIN : 0u) |
+                                   PN532_SVDD_ENABLE) ||
         !pn532_write_register(CIU_TX_SEL,
-                              CIU_TX_DRIVER_SIGIN | CIU_TX_SIGOUT_COMPARATOR) ||
+                              passive ? CIU_TX_SIGOUT_ENVELOPE
+                                      : CIU_TX_DRIVER_SIGIN |
+                                            CIU_TX_SIGOUT_COMPARATOR) ||
         !pn532_write_register(CIU_COMMAND, CIU_COMMAND_RECEIVE) ||
         !pn532_update_register(CIU_TX_CONTROL,
                                CIU_TX_CONTROL_READER_MASK,
@@ -372,7 +394,7 @@ bool pn532_frontend_prepare_reader(uint8_t protocol)
         return failed();
     }
     reader_protocol = protocol;
-    role = FRONTEND_READER;
+    role = passive ? FRONTEND_SNIFF : FRONTEND_READER;
     ready = true;
     field_enabled = enable;
     if (enable)
@@ -382,8 +404,40 @@ bool pn532_frontend_prepare_reader(uint8_t protocol)
     return true;
 }
 
+bool pn532_frontend_prepare_reader(uint8_t protocol)
+{
+    return prepare_receiver(protocol, false);
+}
+
+bool pn532_frontend_prepare_sniff(void)
+{
+    return prepare_receiver(PN532_PROTOCOL_NFCA, true);
+}
+
+bool pn532_frontend_prepare_nfcv_sniff(void)
+{
+    if (!prepare_receiver(PN532_PROTOCOL_NFCV, true))
+    {
+        return false;
+    }
+    /* Envelope on SIGOUT, raw subcarrier on AUX via test bus 2 bit 3.
+     * Qualified on the reference PN532; no native ISO15693 framing. */
+    if (!pn532_write_register(CIU_RX_MODE, CIU_RX_MODE_COMPARATOR) ||
+        !pn532_update_register(CIU_DEMOD,
+                               CIU_DEMOD_MASK,
+                               CIU_DEMOD_PLL_READER | CIU_DEMOD_FIXED_I))
+    {
+        return failed();
+    }
+    return true;
+}
+
 bool pn532_frontend_set_field(bool enabled)
 {
+    if (role == FRONTEND_SNIFF)
+    {
+        return !enabled;
+    }
     if (!enabled)
     {
         /* The shared SIGIN pin belongs to passive emulation until its owner

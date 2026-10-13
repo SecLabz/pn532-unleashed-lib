@@ -1,12 +1,14 @@
 # Try an example
 
-Six complete RP2040 Zero applications use only public headers and the CMake
+Complete RP2040 Zero applications use only public headers and the CMake
 library target. Copy a `main.c`, adjust its data and run one example at a time.
 
 | Example | What to adjust |
 | --- | --- |
 | [NFC-A reader](nfca_reader/README.md) | Model and supplied credentials |
 | [SLIX reader](slix_reader/README.md) | Repeated NFC-V memory/security reads |
+| [NFC-A sniffer](nfca_sniffer/README.md) | AUX1/AUX2 pins and capture duration |
+| [NFC-V sniffer](nfcv_sniffer/README.md) | AUX1 pin and capture duration |
 | [SLIX Emulator](slix_emulator/README.md) | UID, four-byte blocks and lock state |
 | [MIFARE Classic Emulator](mifare_classic_emulator/README.md) | One-block-per-row memory image |
 | [NTAG Emulator](ntag_emulator/README.md) | One-page-per-row memory and tag state |
@@ -35,6 +37,7 @@ chooses its transport at initialization.
 
 Put the RP2040 in BOOTSEL mode and copy the chosen `.uf2` to its USB drive.
 
-Reader output occurs after RF stops. Emulation handlers never print.
-Call `nfc_poll()` for activity LED updates when enabled. Avoid serial logs
+Reader and sniffer output occurs after RF stops. Emulation handlers never print.
+Sniffer examples call `nfc_poll()` continuously in their capture loop.
+Other examples use it for activity LED updates when enabled. Avoid serial logs
 during RF reliability measurements.

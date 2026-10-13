@@ -1,0 +1,6 @@
+.program sniff_samples
+; Three synchronized SMs sample envelope, sdata and RxActive every 8/fc.
+; Autopush packs 32 samples per DMA word, oldest sample in bit zero.
+.wrap_target
+    in pins, 1 [7]
+.wrap

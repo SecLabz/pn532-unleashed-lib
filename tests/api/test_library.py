@@ -87,6 +87,7 @@ class LibraryTests(unittest.TestCase):
         sources = (
             "tests/api/library_bridge.c",
             "src/core.c",
+            "tests/api/sniff_stub.c",
             "src/board/resources.c",
             "src/board/board_config.c",
             "src/cards/image.c",

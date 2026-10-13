@@ -18,6 +18,11 @@ endif()
 
 add_library(pn532_unleashed_lib STATIC
     src/core.c
+    src/phy/nfca/sniff/sniff.c
+    src/phy/sniff/capture.c
+    src/phy/nfca/sniff/decode.c
+    src/phy/nfcv/sniff/sniff.c
+    src/phy/nfcv/sniff/decode.c
     src/board/board_config.c
     src/board/resources.c
     src/cards/nfca_select_validate.c
@@ -94,6 +99,7 @@ add_library(pn532_unleashed_lib STATIC
     src/phy/nfcv/pcd/nfcv_pcd_tx.c
 )
 foreach(PIO_FILE IN ITEMS
+    src/phy/sniff/sniff_samples.pio
     src/phy/picc/picc_tx_stream.pio
     src/phy/nfca/picc/nfca_rx_levels.pio
     src/phy/nfcv/picc/nfcv_rx_sample.pio
@@ -110,7 +116,8 @@ if(PNU_RF_TRACE)
     target_sources(pn532_unleashed_lib PRIVATE
         src/pn532/pn532_frontend_trace.c
         src/phy/nfca/picc/nfca_trace.c
-        src/phy/pcd/reader_rf_trace.c)
+        src/phy/pcd/reader_rf_trace.c
+        src/phy/nfca/sniff/trace.c)
     target_compile_definitions(pn532_unleashed_lib PUBLIC PNU_RF_TRACE=1)
 endif()
 if(PNU_HSU_TRACE)

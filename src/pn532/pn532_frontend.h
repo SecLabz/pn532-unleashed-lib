@@ -15,6 +15,8 @@ bool pn532_frontend_init(void);
 bool pn532_frontend_prepare_tag(uint8_t protocol);
 bool pn532_frontend_arm_tag(void);
 bool pn532_frontend_prepare_reader(uint8_t protocol);
+bool pn532_frontend_prepare_sniff(void);
+bool pn532_frontend_prepare_nfcv_sniff(void);
 bool pn532_frontend_set_field(bool enabled);
 bool pn532_frontend_stop(void);
 #ifdef PNU_RF_TRACE

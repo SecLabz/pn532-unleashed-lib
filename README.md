@@ -23,6 +23,8 @@ https://github.com/user-attachments/assets/bf9089b4-ad2d-4a9f-9ccc-5de9345d56bc
 - **Emulate NFC-A:** Classic Mini/1K/2K/4K, NTAG213/215/216, Ultralight/EV1.
 - **Read and emulate NFC-V:** ISO15693 discovery, SLIX/SLIX-L memory reads;
   generic ISO15693, SLIX and SLIX-L emulation.
+- **Sniff NFC-A and NFC-V:** capture reader commands and tag replies.
+  [Sniffing guide →](docs/sniff.md)
 - **Customize NFC exchanges:** send your own reader commands and define how an
   emulated tag responds.
 

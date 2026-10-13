@@ -87,7 +87,9 @@ retrying init. [Lifecycle contract →](../include/pn532_unleashed/core.h)
 
 ## `nfc_poll()`
 
-Update the activity LED. Call regularly from the main loop when enabled.
+Service bounded passive capture and update the activity LED. Call regularly
+from the main loop; active sniffing requires an average poll interval below
+1 ms and transient service gaps no longer than 30 ms.
 
 Related guides:
 
@@ -96,3 +98,5 @@ Related guides:
 - Raw reader exchanges: [NFC-A](nfca.md#raw-reader-exchanges) and
   [NFC-V](nfcv.md#raw-reader-exchanges).
 - [Type 2 locks, counters and CFGLCK](emulation.md#type-2-behavior).
+
+- Passive dual NFC-A/NFC-V capture: [sniff API and timing contract](sniff.md).

@@ -6,6 +6,8 @@
 #include "cards/mifare/reader/mifare_recovery.h"
 #include "cards/nfca_access.h"
 #include "emulation/emulation.h"
+#include "phy/nfca/sniff/sniff_internal.h"
+#include "phy/nfcv/sniff/sniff_internal.h"
 #include "pn532/pn532_frontend.h"
 #include "pn532/pn532_transport.h"
 #include "pn532_unleashed.h"
@@ -87,7 +89,9 @@ void nfc_session_error(void)
 
 nfc_status_t nfc_init(const nfc_config_t *config)
 {
-    if (context.reader_session && context.state == NFC_STATE_ERROR)
+    if ((context.reader_session || nfca_sniff_requires_stop() ||
+         nfcv_sniff_requires_stop()) &&
+        context.state == NFC_STATE_ERROR)
     {
         /* A failed custom transaction can still own a live field. Recovery
          * must explicitly stop/release that session before reinitialization. */
@@ -141,6 +145,8 @@ void nfc_poll(void)
         board_activity_led_clear();
         return;
     }
+    nfca_sniff_poll();
+    nfcv_sniff_poll();
     board_activity_led_task();
 }
 
@@ -153,12 +159,15 @@ nfc_status_t nfc_stop(void)
     context.reader_session = false;
     nfca_access_reset();
     mifare_recovery_reset();
+    const bool sniff_stopped = nfca_sniff_stop();
+    const bool nfcv_sniff_stopped = nfcv_sniff_stop();
     const bool nfca_stopped = nfca_reader_stop();
     const bool reader_stopped = nfcv_reader_stop();
     const bool tag_stopped =
         context.initialized ? emulation_stop() : pn532_frontend_stop();
     board_activity_led_clear();
-    if (!nfca_stopped || !reader_stopped || !tag_stopped)
+    if (!sniff_stopped || !nfcv_sniff_stopped || !nfca_stopped ||
+        !reader_stopped || !tag_stopped)
     {
         context.state = NFC_STATE_ERROR;
         return NFC_RF_ERROR;

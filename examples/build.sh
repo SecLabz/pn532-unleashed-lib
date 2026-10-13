@@ -7,7 +7,8 @@ usage()
 Usage: ./examples/build.sh [example|all] [SPI|HSU]
 
 Defaults: all examples, SPI transport.
-Examples: nfca_reader, slix_reader, mifare_classic_emulator,
+Examples: nfca_reader, slix_reader, nfca_sniffer, nfcv_sniffer,
+          mifare_classic_emulator,
           ntag_emulator, slix_emulator, ntag_custom_handler.
 Set PICO_SDK_PATH to an installed Pico SDK with its submodules.
 EOF
@@ -25,7 +26,8 @@ fi
 example=${1:-all}
 transport=${2:-SPI}
 case "$example" in
-    all|nfca_reader|slix_reader|mifare_classic_emulator|ntag_emulator|\
+    all|nfca_reader|slix_reader|nfca_sniffer|nfcv_sniffer|\
+        mifare_classic_emulator|ntag_emulator|\
         slix_emulator|ntag_custom_handler) ;;
     *)
         printf 'Error: unknown example "%s".\n' "$example" >&2

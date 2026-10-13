@@ -30,7 +30,8 @@ add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/.." pn532_library)
 pico_define_boot_stage2(examples_boot2 ${PICO_DEFAULT_BOOT_STAGE2_FILE})
 target_compile_definitions(examples_boot2 PRIVATE PICO_FLASH_SPI_CLKDIV=4)
 foreach(example IN ITEMS
-    nfca_reader slix_reader mifare_classic_emulator ntag_emulator
+    nfca_reader slix_reader nfca_sniffer nfcv_sniffer
+    mifare_classic_emulator ntag_emulator
     slix_emulator ntag_custom_handler)
     add_executable(${example} ${example}/main.c)
     target_link_libraries(${example} PRIVATE pn532_unleashed::pn532_unleashed)

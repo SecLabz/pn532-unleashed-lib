@@ -20,6 +20,8 @@ extern "C"
         NFC_STATE_EMULATING_NFCA = 2,
         NFC_STATE_EMULATING_NFCV = 3,
         NFC_STATE_ERROR = 5,
+        NFC_STATE_SNIFFING_NFCA = 7,
+        NFC_STATE_SNIFFING_NFCV = 8,
     } nfc_state_t;
 
     /* Single instance, foreground calls on one core, no concurrent/reentrant
@@ -38,7 +40,8 @@ extern "C"
      */
     nfc_status_t nfc_init(const nfc_config_t *config);
 
-    /* Update the activity LED. Call regularly from the main loop when enabled.
+    /* Service bounded passive capture and update the activity LED. Call
+     * regularly from the main loop
      */
     void nfc_poll(void);
 
@@ -53,7 +56,8 @@ extern "C"
     /* Cached PN532 identification and SAM setup succeeded since reset.
      * No live health probe or bus IO; remains true after nfc_stop(). */
     bool nfc_frontend_initialized(void);
-    /* A tag is armed or a reader configured; false while idle. Does not
+    /* A tag is armed, a reader configured or passive capture configured;
+     * false while idle. Does not
      * imply that the reader field is currently on. No bus IO. */
     bool nfc_rf_ready(void);
 

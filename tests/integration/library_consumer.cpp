@@ -5,7 +5,9 @@
 #include "pn532_unleashed/nfca_mifare_magic.h"
 #include "pn532_unleashed/nfca_mifare_uid.h"
 #include "pn532_unleashed/nfca_reader.h"
+#include "pn532_unleashed/nfca_sniff.h"
 #include "pn532_unleashed/nfcv_reader.h"
+#include "pn532_unleashed/nfcv_sniff.h"
 #include "pn532_unleashed/nfcv_standard.h"
 
 #include "hardware/clocks.h"
@@ -172,6 +174,24 @@ int main()
         command, sizeof(command), &vicinity_reply, nullptr);
     (void)nfcv_reader_exchange_frame(&vicinity_tx, &vicinity_rx, nullptr);
     (void)nfc_stop();
+    nfcv_sniff_config_t vicinity_sniff = nfcv_sniff_config_default();
+    nfcv_sniff_frame_t vicinity_frame = {};
+    nfcv_sniff_summary_t vicinity_summary = {};
+    bool vicinity_available;
+    (void)nfcv_sniff_start(&vicinity_sniff);
+    nfc_poll();
+    (void)nfcv_sniff_read(&vicinity_frame, &vicinity_available);
+    (void)nfc_stop();
+    (void)nfcv_sniff_summary(&vicinity_summary);
+    nfca_sniff_config_t sniff_config = nfca_sniff_config_default();
+    nfca_sniff_frame_t sniff_frame = {};
+    nfca_sniff_summary_t sniff_summary = {};
+    bool available = false;
+    (void)nfca_sniff_start(&sniff_config);
+    nfc_poll();
+    (void)nfca_sniff_read(&sniff_frame, &available);
+    (void)nfc_stop();
+    (void)nfca_sniff_summary(&sniff_summary);
     (void)nfca_emulation_start(custom_nfca, nullptr);
     (void)nfc_stop();
     (void)nfcv_emulation_start(custom_nfcv, nullptr);

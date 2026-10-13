@@ -20,6 +20,10 @@ The initial scope is:
   Explicit magic-card UID writes use generation-specific paths with
   expected-identity validation and post-write verification; detection probes
   send no write data.
+- Passive NFC-A 106 kbit/s dual sniffing with optional AUX1/AUX2 wiring,
+  bounded capture buffers and live CLI command annotations.
+- Passive dual NFC-V sniffing: reader 1-of-4/1-of-256 and high-rate
+  single-subcarrier tag responses, with optional AUX1 wiring.
 - NFC-V reader: inventory, system information, complete readable memory dump.
 - NFC-V tag emulation: generic ISO15693, SLIX and SLIX-L.
 - NFC-A memory emulation: Classic Mini/1K/2K/4K, NTAG213/215/216,

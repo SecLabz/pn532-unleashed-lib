@@ -31,6 +31,15 @@ extern "C"
     uint16_t
     nfc_trace_nfca(uint16_t offset, uint8_t *output, uint16_t capacity_bytes);
     uint16_t nfc_trace_reader(char *output, uint16_t capacity_bytes);
+    /* Passive sniff bench snapshot, read after STOP only. Offset counts
+     * 16-byte records. Each reply has an 80-byte SNR1 header: completed word
+     * count, segment count, three edge/high counters, four segment start_fc
+     * values and sizes. Records contain three packed sample words and decoder
+     * state bits (synchronized, PCD active, PICC active, previous pause).
+     * Four bounded 19.3 ms bursts follow activity after 1 s of quiet input.
+     * The trace may fill; it never blocks capture or performs bus IO. */
+    uint16_t
+    nfc_trace_sniff(uint16_t offset, uint8_t *output, uint16_t capacity_bytes);
     /* Attach the completed foreground reader operation status to its record. */
     void nfc_trace_finish(uint8_t status);
 #endif
