@@ -11,16 +11,16 @@
 #define PICC_SEARCH_OVERLAP_WORDS 8u
 static struct
 {
-    uint64_t slots;
-    uint64_t pcd_start;
-    uint64_t picc_start;
+    uint64_t sample_slots;
+    uint64_t pcd_start_slots;
+    uint64_t picc_start_slots;
     uint32_t picc_words[PICC_WORD_CAPACITY];
-    uint16_t picc_count;
-    uint16_t pcd_symbols;
+    uint16_t picc_size_words;
+    uint16_t pcd_size_symbols;
     uint16_t pcd_sample_slots;
     uint8_t symbols[PCD_SYMBOL_CAPACITY];
     nfcv_1of256_decoder_t slow;
-    uint8_t sample, sample_bits, quiet;
+    uint8_t sample, sample_bits, quiet_words;
     bool pcd_active, slow_coding, previous_level, picc_sof;
 } decoder;
 
@@ -35,12 +35,13 @@ static void publish_request(bool complete)
     else
     {
         valid = nfcv_rx_decode_samples(
-            decoder.symbols, decoder.pcd_symbols, &decoded);
+            decoder.symbols, decoder.pcd_size_symbols, &decoded);
     }
     nfcv_sniff_frame_t frame = {
-        .start_fc = decoder.pcd_start * 8u,
+        .start_fc = decoder.pcd_start_slots * 8u,
         .duration_fc =
-            (uint32_t)((decoder.slots + 1u - decoder.pcd_start) * 8u),
+            (uint32_t)((decoder.sample_slots + 1u - decoder.pcd_start_slots) *
+                       8u),
         .size_bytes = decoded.size_bytes,
         .size_bits = decoded.size_bytes * 8u,
         .direction = NFCV_SNIFF_PCD,
@@ -69,26 +70,26 @@ static void publish_response(bool truncated);
 
 static void reader_symbol(uint8_t sample)
 {
-    if (decoder.pcd_symbols == 0u)
+    if (decoder.pcd_size_symbols == 0u)
     {
         if (sample != NFCV_1OF4_SOF && sample != NFCV_1OF256_SOF)
         {
             decoder.pcd_active = false;
             return;
         }
-        if (decoder.picc_count != 0u)
+        if (decoder.picc_size_words != 0u)
         {
             publish_response(false);
         }
         decoder.slow_coding = sample == NFCV_1OF256_SOF;
         decoder.symbols[0] = sample;
-        decoder.pcd_symbols = 1u;
+        decoder.pcd_size_symbols = 1u;
         nfcv_1of256_decoder_reset(&decoder.slow);
         return;
     }
     if (decoder.slow_coding)
     {
-        decoder.pcd_symbols++;
+        decoder.pcd_size_symbols++;
         const nfcv_1of256_step_t step =
             nfcv_1of256_decoder_push(&decoder.slow, sample);
         if (step != NFCV_1OF256_STEP_CONTINUE)
@@ -97,15 +98,15 @@ static void reader_symbol(uint8_t sample)
         }
         return;
     }
-    if (decoder.pcd_symbols == PCD_SYMBOL_CAPACITY)
+    if (decoder.pcd_size_symbols == PCD_SYMBOL_CAPACITY)
     {
         publish_request(false);
         return;
     }
-    decoder.symbols[decoder.pcd_symbols++] = sample;
+    decoder.symbols[decoder.pcd_size_symbols++] = sample;
     if (sample == NFCV_1OF4_EOF)
     {
-        publish_request((decoder.pcd_symbols - 2u) % 4u == 0u);
+        publish_request((decoder.pcd_size_symbols - 2u) % 4u == 0u);
         return;
     }
     uint8_t pair;
@@ -120,9 +121,9 @@ static void reader_sample(bool level)
     if (!decoder.pcd_active && decoder.previous_level && !level)
     {
         decoder.pcd_active = true;
-        decoder.pcd_start = decoder.slots;
+        decoder.pcd_start_slots = decoder.sample_slots;
         decoder.pcd_sample_slots = 0u;
-        decoder.pcd_symbols = 0u;
+        decoder.pcd_size_symbols = 0u;
         decoder.sample = 0u;
         decoder.sample_bits = 0u;
         decoder.slow_coding = false;
@@ -143,7 +144,7 @@ static void reader_sample(bool level)
         decoder.pcd_sample_slots = (decoder.pcd_sample_slots + 1u) & 15u;
     }
     decoder.previous_level = level;
-    decoder.slots++;
+    decoder.sample_slots++;
 }
 
 static void publish_response(bool truncated)
@@ -151,15 +152,16 @@ static void publish_response(bool truncated)
     nfcv_sniff_frame_t frame = {.direction = NFCV_SNIFF_PICC};
     nfcv_level_result_t physical;
     (void)nfcv_decode_levels(decoder.picc_words,
-                             decoder.picc_count * 32u,
+                             decoder.picc_size_words * 32u,
                              frame.data,
                              sizeof(frame.data),
                              &physical);
     if (physical.sof_seen)
     {
-        frame.start_fc = (decoder.picc_start + physical.start_sample) * 8u;
-        const uint32_t end =
-            physical.eof_seen ? physical.end_sample : decoder.picc_count * 32u;
+        frame.start_fc =
+            (decoder.picc_start_slots + physical.start_sample) * 8u;
+        const uint32_t end = physical.eof_seen ? physical.end_sample
+                                               : decoder.picc_size_words * 32u;
         frame.duration_fc = (end - physical.start_sample) * 8u;
         frame.size_bytes = physical.size_bytes;
         frame.size_bits = physical.size_bytes * 8u;
@@ -179,59 +181,59 @@ static void publish_response(bool truncated)
         }
         nfcv_sniff_publish(&frame);
     }
-    decoder.picc_count = 0u;
-    decoder.quiet = 0u;
+    decoder.picc_size_words = 0u;
+    decoder.quiet_words = 0u;
     decoder.picc_sof = false;
 }
 
 void nfcv_sniff_decode_word(const uint32_t levels[3])
 {
-    const uint64_t start = decoder.slots;
-    bool reader_seen = decoder.pcd_active && decoder.pcd_symbols != 0u;
+    const uint64_t start = decoder.sample_slots;
+    bool reader_seen = decoder.pcd_active && decoder.pcd_size_symbols != 0u;
     if (!decoder.pcd_active && (levels[0] == UINT32_MAX ||
                                 (levels[0] == 0u && !decoder.previous_level)))
     {
         /* A constant idle envelope cannot add PPM edges. Preserve the first
          * falling edge and every active symbol on the scalar capture grid. */
         decoder.previous_level = levels[0] != 0u;
-        decoder.slots += 32u;
+        decoder.sample_slots += 32u;
     }
     else
     {
         for (unsigned bit = 0u; bit < 32u; bit++)
         {
             reader_sample(((levels[0] >> bit) & 1u) != 0u);
-            reader_seen = reader_seen ||
-                          (decoder.pcd_active && decoder.pcd_symbols != 0u);
+            reader_seen = reader_seen || (decoder.pcd_active &&
+                                          decoder.pcd_size_symbols != 0u);
         }
     }
     if (reader_seen)
     {
-        decoder.picc_count = 0u;
-        decoder.quiet = 0u;
+        decoder.picc_size_words = 0u;
+        decoder.quiet_words = 0u;
         decoder.picc_sof = false;
         return;
     }
     const uint32_t word = levels[1];
     const bool constant = word == 0u || word == UINT32_MAX;
-    if (decoder.picc_count == 0u)
+    if (decoder.picc_size_words == 0u)
     {
         if (constant)
         {
             return;
         }
-        decoder.picc_start = start;
+        decoder.picc_start_slots = start;
     }
-    decoder.picc_words[decoder.picc_count++] = word;
+    decoder.picc_words[decoder.picc_size_words++] = word;
     /* High-rate Manchester has at most two quiet half-bits (64 samples).
      * Five constant words cannot terminate data; leave room for full EOF.
      * Raw analog noise without a qualified physical SOF is not a frame. */
-    decoder.quiet = constant ? decoder.quiet + 1u : 0u;
-    if (decoder.quiet == PICC_QUIET_WORDS)
+    decoder.quiet_words = constant ? decoder.quiet_words + 1u : 0u;
+    if (decoder.quiet_words == PICC_QUIET_WORDS)
     {
         publish_response(false);
     }
-    else if (!decoder.picc_sof && decoder.picc_count == PICC_SEARCH_WORDS)
+    else if (!decoder.picc_sof && decoder.picc_size_words == PICC_SEARCH_WORDS)
     {
         uint32_t sof_start;
         if (nfcv_find_sof(
@@ -248,11 +250,11 @@ void nfcv_sniff_decode_word(const uint32_t levels[3])
             memmove(decoder.picc_words,
                     decoder.picc_words + PICC_SEARCH_OVERLAP_WORDS,
                     PICC_SEARCH_OVERLAP_WORDS * sizeof(uint32_t));
-            decoder.picc_count = PICC_SEARCH_OVERLAP_WORDS;
-            decoder.picc_start += PICC_SEARCH_OVERLAP_WORDS * 32u;
+            decoder.picc_size_words = PICC_SEARCH_OVERLAP_WORDS;
+            decoder.picc_start_slots += PICC_SEARCH_OVERLAP_WORDS * 32u;
         }
     }
-    else if (decoder.picc_count == PICC_WORD_CAPACITY)
+    else if (decoder.picc_size_words == PICC_WORD_CAPACITY)
     {
         publish_response(true);
     }
@@ -266,11 +268,11 @@ void nfcv_sniff_decode_reset(void)
 
 void nfcv_sniff_decode_stop(void)
 {
-    if (decoder.pcd_active && decoder.pcd_symbols != 0u)
+    if (decoder.pcd_active && decoder.pcd_size_symbols != 0u)
     {
         publish_request(false);
     }
-    if (decoder.picc_count != 0u)
+    if (decoder.picc_size_words != 0u)
     {
         publish_response(true);
     }

@@ -8,7 +8,6 @@ static struct
 {
     uint64_t sample_slots;
     uint64_t pcd_start_slots;
-    uint64_t picc_start_slots;
     uint32_t pcd_slots;
     uint32_t last_pause_slots;
     uint16_t picc_slots;
@@ -238,7 +237,6 @@ static void sample(bool pause, bool data, bool active)
     {
         decoder.picc_active = true;
         decoder.picc_truncated = false;
-        decoder.picc_start_slots = decoder.sample_slots;
         decoder.picc_slots = 0u;
         decoder.wire_bits = 0u;
         decoder.parity_valid = true;
