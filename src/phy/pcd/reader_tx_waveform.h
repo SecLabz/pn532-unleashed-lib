@@ -54,8 +54,8 @@ reader_tx_waveform_append(reader_tx_waveform_t *waveform,
     if (waveform->count != 0u)
     {
         reader_tx_segment_t *last = &waveform->segments[waveform->count - 1u];
-        if (last->level == level &&
-            last->duration_fc <= (uint16_t)(UINT16_MAX - duration_fc))
+        const uint16_t available_fc = (uint16_t)(UINT16_MAX - duration_fc);
+        if (last->level == level && last->duration_fc <= available_fc)
         {
             last->duration_fc = (uint16_t)(last->duration_fc + duration_fc);
             return true;
