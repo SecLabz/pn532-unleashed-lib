@@ -42,19 +42,22 @@ RAM_FUNC(mifare_value_block_valid)(const uint8_t block[MIFARE_BLOCK_SIZE])
 {
     for (uint8_t index = 0u; index < MIFARE_VALUE_BYTES; index++)
     {
-        if (block[index] !=
-                (uint8_t)~block[index + MIFARE_VALUE_INVERTED_BYTE] ||
+        const uint8_t inverted_value =
+            (uint8_t)~block[index + MIFARE_VALUE_INVERTED_BYTE];
+        if (block[index] != inverted_value ||
             block[index] != block[index + MIFARE_VALUE_COPY_BYTE])
         {
             return false;
         }
     }
-    return block[MIFARE_VALUE_ADDRESS_BYTE] ==
-               (uint8_t)~block[MIFARE_VALUE_ADDRESS_BYTE + 1u] &&
+    const uint8_t inverted_address =
+        (uint8_t)~block[MIFARE_VALUE_ADDRESS_BYTE + 1u];
+    const uint8_t inverted_address_copy =
+        (uint8_t)~block[MIFARE_VALUE_ADDRESS_BYTE + 3u];
+    return block[MIFARE_VALUE_ADDRESS_BYTE] == inverted_address &&
            block[MIFARE_VALUE_ADDRESS_BYTE] ==
                block[MIFARE_VALUE_ADDRESS_BYTE + 2u] &&
-           block[MIFARE_VALUE_ADDRESS_BYTE + 2u] ==
-               (uint8_t)~block[MIFARE_VALUE_ADDRESS_BYTE + 3u];
+           block[MIFARE_VALUE_ADDRESS_BYTE + 2u] == inverted_address_copy;
 }
 
 static uint32_t RAM_FUNC(mifare_value_block_get)(const uint8_t *block)
